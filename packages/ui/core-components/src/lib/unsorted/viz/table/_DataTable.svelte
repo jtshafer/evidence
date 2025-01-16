@@ -28,7 +28,10 @@
 	import { toasts } from '@evidence-dev/component-utilities/stores';
 	import { query } from '@evidence-dev/universal-sql/client-duckdb';
 	import Skeleton from '../../../atoms/skeletons/Skeleton.svelte';
-	import debounce from 'lodash.debounce';
+	import { browserDebounce } from '@evidence-dev/sdk/utils';
+	import { getThemeStores } from '../../../themes/themes.js';
+
+	const { resolveColor } = getThemeStores();
 
 	// Set up props store
 	let props = writable({});
@@ -38,16 +41,34 @@
 	export let data;
 	export let queryID = undefined;
 	export let rows = 10; // number of rows to show
+
 	$: rows = Number.parseInt(rows);
 
 	export let rowNumbers = false;
 	$: rowNumbers = rowNumbers === 'true' || rowNumbers === true;
 
+	// Sort props
+	export let sort = undefined;
+	let sortBy = undefined;
+	let sortAsc = undefined;
+	let sortDirection = undefined;
+	let sortObj = {};
+	$: if (sort) {
+		const [column, direction] = sort.split(' ');
+		sortBy = column;
+		sortDirection = direction;
+		sortAsc = direction === 'desc' ? false : true; // Default to ascending if no direction is provided
+		sortObj = sortBy ? { col: sortBy, ascending: sortAsc } : { col: null, ascending: null };
+	}
+
 	export let groupBy = undefined;
 	export let groupsOpen = true; // starting toggle for groups - open or closed
 	$: groupsOpen = groupsOpen === 'true' || groupsOpen === true;
 	export let groupType = 'accordion'; // accordion | section
+
 	export let accordionRowColor = undefined;
+	$: accordionRowColorStore = resolveColor(accordionRowColor);
+
 	export let groupNamePosition = 'middle'; // middle (default) | top | bottom
 
 	if (groupType === 'section') {
@@ -58,7 +79,10 @@
 	$: subtotals = subtotals === 'true' || subtotals === true;
 
 	export let subtotalRowColor = undefined;
+	$: subtotalRowColorStore = resolveColor(subtotalRowColor);
+
 	export let subtotalFontColor = undefined;
+	$: subtotalFontColorStore = resolveColor(subtotalFontColor);
 
 	let groupToggleStates = {};
 
@@ -93,7 +117,10 @@
 	$: totalRow = totalRow === 'true' || totalRow === true;
 
 	export let totalRowColor = undefined;
+	$: totalRowColorStore = resolveColor(totalRowColor);
+
 	export let totalFontColor = undefined;
+	$: totalFontColorStore = resolveColor(totalFontColor);
 
 	export let isFullPage = false;
 
@@ -104,6 +131,7 @@
 	$: showLinkCol = showLinkCol === 'true' || showLinkCol === true;
 
 	let error = undefined;
+	let groupDataPopulated = false;
 
 	// ---------------------------------------------------------------------------------------
 	// Add props to store to let child components access them
@@ -125,12 +153,16 @@
 	$: wrapTitles = wrapTitles === 'true' || wrapTitles === true;
 
 	export let headerColor = undefined;
-	export let headerFontColor = 'var(--grey-900)';
+	$: headerColorStore = resolveColor(headerColor);
+
+	export let headerFontColor = undefined;
+	$: headerFontColorStore = resolveColor(headerFontColor);
 
 	export let formatColumnTitles = true;
 	$: formatColumnTitles = formatColumnTitles === 'true' || formatColumnTitles === true;
 
-	export let backgroundColor = 'white';
+	export let backgroundColor = undefined;
+	$: backgroundColorStore = resolveColor(backgroundColor);
 
 	export let compact = undefined;
 
@@ -146,6 +178,14 @@
 		return { ...d, priorityColumns };
 	});
 
+	$: finalColumnOrder = getFinalColumnOrder(
+		$props.columns.map((d) => d.id),
+		$props.priorityColumns
+	);
+	$: orderedColumns = [...$props.columns].sort(
+		(a, b) => finalColumnOrder.indexOf(a.id) - finalColumnOrder.indexOf(b.id)
+	);
+
 	$: try {
 		error = undefined;
 
@@ -154,6 +194,18 @@
 
 		// GET COLUMN SUMMARY
 		columnSummary = getColumnSummary(data, 'array');
+
+		// Check if sort column is in table
+		if (sortBy) {
+			if (!columnSummary.map((d) => d.id).includes(sortBy)) {
+				throw Error(
+					`${sortBy} is not a column in the dataset. sort should contain one column name and optionally a direction (asc or desc). E.g., sort=my_column or sort="my_column desc"`
+				);
+			}
+			if (sortDirection && !['asc', 'desc'].includes(sortDirection)) {
+				throw Error(`${sortDirection} is not a valid sort direction. Please use asc or desc`);
+			}
+		}
 
 		// PROCESS DATES
 		// Filter for columns with type of "date"
@@ -166,8 +218,11 @@
 		}
 
 		// Hide link column if columns have not been explicitly selected:
-		for (let i = 0; i < columnSummary.length; i++) {
-			columnSummary[i].show = showLinkCol === false && columnSummary[i].id === link ? false : true;
+		if (link) {
+			const linkColIndex = columnSummary.findIndex((d) => d.id === link);
+			if (linkColIndex !== -1 && !showLinkCol) {
+				columnSummary.splice(linkColIndex, 1);
+			}
 		}
 	} catch (e) {
 		error = e.message;
@@ -193,7 +248,7 @@
 	/** @type {ReturnValue<typeof Query["createReactive"]>}*/
 	let searchFactory;
 	$: if (Query.isQuery(data) && search) {
-		searchFactory = debounce(
+		searchFactory = browserDebounce(
 			Query.createReactive(
 				{
 					loadGracePeriod: 1000,
@@ -214,89 +269,155 @@
 			searchFactory(
 				data.search(
 					searchValue,
-					data.columns.map((c) => c.column_name),
+					$props.columns.map((c) => c.id),
 					searchValue.length === 1 ? 0.5 : searchValue.length >= 6 ? 0.9 : 0.8
 				),
-				data
+				data.opts
 			);
-		} else filteredData = data;
+		} else {
+			searchFactory(data, data.opts);
+		}
 	}
 
 	$: if (search && !Query.isQuery(data)) {
-		toasts.add({
-			status: 'warning',
-			title: 'Search Failed',
-			description: 'Please use a query instead.',
-			timeout: 5000
-		});
+		toasts.add(
+			{
+				status: 'warning',
+				title: 'Search Failed',
+				message: 'Please use a query instead.'
+			},
+			5000
+		);
+	}
+
+	// ---------------------------------------------------------------------------------------
+	// GROUPED DATA
+	// ---------------------------------------------------------------------------------------
+
+	let groupedData = {};
+	let groupRowData = [];
+
+	$: if (data) {
+		groupDataPopulated = false;
+	}
+
+	$: if (!error) {
+		if (groupBy && !groupDataPopulated) {
+			groupedData = data.reduce((acc, row) => {
+				const groupName = row[groupBy];
+				if (!acc[groupName]) {
+					acc[groupName] = [];
+				}
+				acc[groupName].push(row);
+				return acc;
+			}, {});
+			groupDataPopulated = true;
+		}
+
+		// After groupedData is populated, calculate aggregations for groupRowData
+		groupRowData = Object.keys(groupedData).reduce((acc, groupName) => {
+			acc[groupName] = {}; // Initialize groupRow object for this group
+
+			for (const col of $props.columns) {
+				const id = col.id;
+				const colType = columnSummary.find((d) => d.id === id)?.type;
+				const totalAgg = col.totalAgg;
+				const weightCol = col.weightCol;
+				const rows = groupedData[groupName];
+				acc[groupName][id] = aggregateColumn(rows, id, totalAgg, colType, weightCol);
+			}
+
+			return acc;
+		}, {});
+
+		// Update groupToggleStates only for new groups
+		const existingGroups = Object.keys(groupToggleStates);
+		for (const groupName of Object.keys(groupedData)) {
+			if (!existingGroups.includes(groupName)) {
+				groupToggleStates[groupName] = groupsOpen; // Only add new groups with the default state
+			}
+			// Existing states are untouched
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------
 	// SORTING
 	// ---------------------------------------------------------------------------------------
 
-	let sortBy = { col: null, ascending: null };
-
-	$: sort = (column) => {
-		if (sortBy.col == column) {
-			sortBy.ascending = !sortBy.ascending;
+	$: sortClick = (column) => {
+		if (sortObj.col === column) {
+			// If the clicked column is the same as inital sort column, switch the sort direction
+			sortObj.ascending = !sortObj.ascending;
 		} else {
-			sortBy.col = column;
-			sortBy.ascending = true;
+			// If the clicked column is different from initial sort column, change the sort column and sort ascending
+			sortObj.col = column;
+			sortObj.ascending = true;
 		}
 
+		sortFunc(sortObj);
+	};
+
+	$: sortFunc = (sortObj) => {
+		const column = sortObj.col;
+
 		// Modifier to sorting function for ascending or descending
-		const sortModifier = sortBy.ascending ? 1 : -1;
+		const sortModifier = sortObj.ascending ? 1 : -1;
 
 		const forceTopOfAscending = (val) =>
 			val === undefined || val === null || (typeof val === 'number' && isNaN(val));
 
-		const sort = (a, b) =>
+		const comparator = (a, b) =>
 			(forceTopOfAscending(a[column]) && !forceTopOfAscending(b[column])) || a[column] < b[column]
 				? -1 * sortModifier
 				: (forceTopOfAscending(b[column]) && !forceTopOfAscending(a[column])) ||
 					  a[column] > b[column]
 					? 1 * sortModifier
 					: 0;
-		data.sort(sort);
-		filteredData = filteredData.sort(sort);
 
 		if (groupBy) {
-			// sort within grouped data
-			Object.keys(groupedData).forEach((groupName) => {
-				groupedData[groupName] = groupedData[groupName].sort(sort);
-			});
+			const sortedGroupedData = {};
+
+			for (const groupName of Object.keys(groupedData)) {
+				sortedGroupedData[groupName] = [...groupedData[groupName]].sort(comparator);
+			}
+
+			groupedData = sortedGroupedData;
+		} else {
+			const sortedFilteredData = [...filteredData].sort(comparator);
+			filteredData = sortedFilteredData;
 		}
 	};
 
 	let sortedGroupNames;
-	$: if (groupBy && sortBy.col) {
+	$: if (groupBy && sortObj.col) {
 		// Sorting groups based on aggregated values or group names
 		sortedGroupNames = Object.entries(groupRowData)
 			.sort((a, b) => {
-				const valA = a[1][sortBy.col],
-					valB = b[1][sortBy.col];
+				const valA = a[1][sortObj.col],
+					valB = b[1][sortObj.col];
 				// Use the existing sort logic but apply it to groupRowData's values
+				// Special case for groupby column
+				if (sortObj.col === groupBy && isNaN(groupBy)) {
+					return sortObj.ascending ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0]);
+				}
 				if (
 					(valA === undefined || valA === null || isNaN(valA)) &&
 					valB !== undefined &&
-					valB !== null &&
 					!isNaN(valB)
 				) {
-					return -1 * (sortBy.ascending ? 1 : -1);
+					return -1 * (sortObj.ascending ? 1 : -1);
 				}
 				if (
 					(valB === undefined || valB === null || isNaN(valB)) &&
 					valA !== undefined &&
-					valA !== null &&
 					!isNaN(valA)
 				) {
-					return 1 * (sortBy.ascending ? 1 : -1);
+					return 1 * (sortObj.ascending ? 1 : -1);
 				}
 				if (valA < valB) {
-					return -1 * (sortBy.ascending ? 1 : -1);
+					return -1 * (sortObj.ascending ? 1 : -1);
 				} else if (valA > valB) {
-					return 1 * (sortBy.ascending ? 1 : -1);
+					return 1 * (sortObj.ascending ? 1 : -1);
 				}
 				return 0;
 			})
@@ -306,8 +427,10 @@
 		sortedGroupNames = Object.keys(groupedData).sort();
 	}
 
-	// Reset sort condition when data object is changed
-	$: data, (sortBy = { col: null, ascending: null });
+	// Re-run sort on data change (useful for input changes)
+	$: if (data && sort) {
+		sortFunc(sortObj);
+	}
 
 	// ---------------------------------------------------------------------------------------
 	// PAGINATION
@@ -340,10 +463,13 @@
 
 	$: if (paginated) {
 		pageCount = Math.ceil(filteredData.length / rows);
+
 		displayedData = filteredData.slice(index, index + rows);
 		displayedPageLength = displayedData.length;
 		if (pageCount < currentPage) {
 			goToPage(pageCount - 1);
+		} else if (currentPage < 1) {
+			goToPage(0);
 		}
 	} else {
 		currentPage = 1;
@@ -356,66 +482,18 @@
 
 	function dataSubset(data, selectedCols) {
 		return data.map((obj) => {
-			var toReturn = {}; //object that would give each desired key for each part in arr
-			selectedCols.forEach((key) => (toReturn[key] = obj[key])); //placing wanted keys in toReturn
-			return toReturn;
+			const ret = {};
+			for (const key of selectedCols) {
+				ret[key] = obj[key];
+			}
+			return ret;
 		});
 	}
 
-	let tableData;
-	$: tableData =
-		$props.columns.length > 0
-			? dataSubset(
-					data,
-					$props.columns.map((d) => d.id)
-				)
-			: data;
-
-	// ---------------------------------------------------------------------------------------
-	// GROUPED DATA
-	// ---------------------------------------------------------------------------------------
-
-	let groupedData = {};
-	let groupRowData = [];
-
-	$: if (!error) {
-		groupedData = data.reduce((acc, row) => {
-			const groupName = row[groupBy];
-			if (!acc[groupName]) {
-				acc[groupName] = [];
-			}
-			acc[groupName].push(row);
-			return acc;
-		}, {});
-
-		// After groupedData is populated, calculate aggregations for groupRowData
-		groupRowData = Object.keys(groupedData).reduce((acc, groupName) => {
-			acc[groupName] = {}; // Initialize groupRow object for this group
-
-			// Get a list of columns to aggregate from $props.columns
-			const columnsToAggregate = $props.columns.length > 0 ? $props.columns : columnSummary;
-
-			columnsToAggregate.forEach((columnDef) => {
-				const column = columnDef.id;
-				const colType = columnSummary.find((d) => d.id === column)?.type;
-				const totalAgg = columnDef.totalAgg;
-				const weightCol = columnDef.weightCol;
-				const rows = groupedData[groupName];
-				acc[groupName][column] = aggregateColumn(rows, column, totalAgg, colType, weightCol);
-			});
-
-			return acc;
-		}, {});
-
-		// Update groupToggleStates only for new groups
-		const existingGroups = Object.keys(groupToggleStates);
-		Object.keys(groupedData).forEach((groupName) => {
-			if (!existingGroups.includes(groupName)) {
-				groupToggleStates[groupName] = groupsOpen; // Only add new groups with the default state
-			}
-			// Existing states are untouched
-		});
-	}
+	$: tableData = dataSubset(
+		data,
+		$props.columns.map((d) => d.id)
+	);
 
 	let fullscreen = false;
 	/** @type {number} */
@@ -425,11 +503,18 @@
 <svelte:window bind:innerHeight />
 
 {#if !isFullPage && innerHeight !== undefined}
-	<Fullscreen bind:open={fullscreen}>
-		<!-- header and last row are 22.5+22.5 = 45px, middle rows are 23 -->
-		{@const ROW_HEIGHT = 23}
-		{@const Y_AXIS_PADDING = 45 + 234}
-		<div class="pl-8 pt-4">
+	<Fullscreen bind:open={fullscreen} {search}>
+		<!-- when compact middle rows are 17.5, middle rows are 23 -->
+		{@const ROW_HEIGHT = compact ? 17.5 : 23}
+		<!-- header and last row are 22.5+22.5 = 45px -->
+		{@const HEADER_LAST_ROW_HEIGHT = 45}
+		<!-- Add additional padding for search bar + 24px-->
+		{@const SEARCHBAR_HEIGHT = 24}
+		<!-- Calculation of total padding -->
+		{@const Y_AXIS_PADDING = search
+			? SEARCHBAR_HEIGHT + HEADER_LAST_ROW_HEIGHT + 234
+			: HEADER_LAST_ROW_HEIGHT + 234}
+		<div class="pt-4">
 			<svelte:self
 				{...$$props}
 				rows={1 + Math.round((innerHeight - Y_AXIS_PADDING) / ROW_HEIGHT)}
@@ -444,7 +529,12 @@
 {/if}
 
 {#if error === undefined}
-	<slot />
+	<slot>
+		<!-- default to every column with no customization -->
+		{#each columnSummary as column}
+			<Column id={column.id} />
+		{/each}
+	</slot>
 
 	{#if link}
 		<InvisibleLinks {data} {link} />
@@ -454,6 +544,7 @@
 	{/each}
 
 	<div
+		data-testid={isFullPage ? undefined : `DataTable-${data?.id ?? 'no-id'}`}
 		role="none"
 		class="table-container"
 		transition:slide|local
@@ -467,23 +558,21 @@
 			<SearchBar bind:value={searchValue} searchFunction={() => {}} />
 		{/if}
 
-		<div class="scrollbox" style:background-color={backgroundColor}>
+		<div class="scrollbox pretty-scrollbar" style:background-color={$backgroundColorStore}>
 			<table>
 				<TableHeader
 					{rowNumbers}
-					{headerColor}
-					{headerFontColor}
-					finalColumnOrder={getFinalColumnOrder(
-						$props.columns.length > 0 ? $props.columns.map((d) => d.id) : Object.keys(data[0]),
-						$props.priorityColumns
-					)}
+					headerColor={$headerColorStore}
+					headerFontColor={$headerFontColorStore}
+					{orderedColumns}
 					{columnSummary}
 					{compact}
 					{sortable}
-					{sort}
+					{sortClick}
 					{formatColumnTitles}
-					{sortBy}
+					{sortObj}
 					{wrapTitles}
+					{link}
 				/>
 
 				<QueryLoad data={filteredData}>
@@ -503,16 +592,11 @@
 									toggled={groupToggleStates[groupName]}
 									on:toggle={handleToggle}
 									{columnSummary}
-									rowColor={accordionRowColor}
+									rowColor={$accordionRowColorStore}
 									{rowNumbers}
 									{subtotals}
 									{compact}
-									finalColumnOrder={getFinalColumnOrder(
-										$props.columns.length > 0
-											? $props.columns.map((d) => d.id)
-											: Object.keys(data[0]),
-										$props.priorityColumns
-									)}
+									{orderedColumns}
 								/>
 								{#if groupToggleStates[groupName]}
 									<TableRow
@@ -527,12 +611,7 @@
 										{columnSummary}
 										grouped={true}
 										groupColumn={groupBy}
-										finalColumnOrder={getFinalColumnOrder(
-											$props.columns.length > 0
-												? $props.columns.map((d) => d.id)
-												: Object.keys(data[0]),
-											$props.priorityColumns
-										)}
+										{orderedColumns}
 									/>
 								{/if}
 							{:else if groupType === 'section'}
@@ -550,29 +629,19 @@
 									{columnSummary}
 									grouped={true}
 									{groupNamePosition}
-									finalColumnOrder={getFinalColumnOrder(
-										$props.columns.length > 0
-											? $props.columns.map((d) => d.id)
-											: Object.keys(data[0]),
-										$props.priorityColumns
-									)}
+									{orderedColumns}
 								/>
 								{#if subtotals}
 									<SubtotalRow
 										{groupName}
 										currentGroupData={groupedData[groupName]}
 										{columnSummary}
-										rowColor={subtotalRowColor}
-										fontColor={subtotalFontColor}
+										rowColor={$subtotalRowColorStore}
+										fontColor={$subtotalFontColorStore}
 										{groupType}
 										{groupBy}
 										{compact}
-										finalColumnOrder={getFinalColumnOrder(
-											$props.columns.length > 0
-												? $props.columns.map((d) => d.id)
-												: Object.keys(data[0]),
-											$props.priorityColumns
-										)}
+										{orderedColumns}
 									/>
 								{/if}
 							{/if}
@@ -587,10 +656,7 @@
 							{compact}
 							{index}
 							{columnSummary}
-							finalColumnOrder={getFinalColumnOrder(
-								$props.columns.length > 0 ? $props.columns.map((d) => d.id) : Object.keys(data[0]),
-								$props.priorityColumns
-							)}
+							{orderedColumns}
 						/>
 					{/if}
 
@@ -599,14 +665,11 @@
 							{data}
 							{rowNumbers}
 							{columnSummary}
-							rowColor={totalRowColor}
-							fontColor={totalFontColor}
+							rowColor={$totalRowColorStore}
+							fontColor={$totalFontColorStore}
 							{groupType}
 							{compact}
-							finalColumnOrder={getFinalColumnOrder(
-								$props.columns.length > 0 ? $props.columns.map((d) => d.id) : Object.keys(data[0]),
-								$props.priorityColumns
-							)}
+							{orderedColumns}
 						/>
 					{/if}
 				</QueryLoad>
@@ -715,10 +778,10 @@
 		{/if}
 	{/if}
 {:else}
-	<ErrorChart {error} chartType="Data Table" />
+	<ErrorChart {error} title="Data Table" />
 {/if}
 
-<style>
+<style lang="postcss">
 	.table-container {
 		font-size: 9.5pt;
 	}
@@ -726,46 +789,7 @@
 	.scrollbox {
 		width: 100%;
 		overflow-x: auto;
-		/* border-bottom: 1px solid var(--grey-200);    */
 		scrollbar-width: thin;
-		scrollbar-color: var(--scrollbar-color) var(--scrollbar-track-color);
-	}
-
-	:root {
-		--scrollbar-track-color: transparent;
-		--scrollbar-color: rgba(0, 0, 0, 0.2);
-		--scrollbar-active-color: rgba(0, 0, 0, 0.4);
-		--scrollbar-size: 0.75rem;
-		--scrollbar-minlength: 1.5rem; /* Minimum length of scrollbar thumb (width of horizontal, height of vertical) */
-	}
-
-	.scrollbox::-webkit-scrollbar {
-		height: var(--scrollbar-size);
-		width: var(--scrollbar-size);
-	}
-
-	.scrollbox::-webkit-scrollbar-track {
-		background-color: var(--scrollbar-track-color);
-	}
-
-	.scrollbox::-webkit-scrollbar-thumb {
-		background-color: var(--scrollbar-color);
-		border-radius: 7px;
-		background-clip: padding-box;
-	}
-
-	.scrollbox::-webkit-scrollbar-thumb:hover {
-		background-color: var(--scrollbar-active-color);
-	}
-
-	.scrollbox::-webkit-scrollbar-thumb:vertical {
-		min-height: var(--scrollbar-minlength);
-		border: 3px solid transparent;
-	}
-
-	.scrollbox::-webkit-scrollbar-thumb:horizontal {
-		min-width: var(--scrollbar-minlength);
-		border: 3px solid transparent;
 	}
 
 	table {
@@ -777,19 +801,18 @@
 
 	.page-changer {
 		padding: 0;
-		color: var(--grey-400);
 		height: 1.1em;
 		width: 1.1em;
 	}
 
 	.pagination {
+		@apply text-base-content-muted;
 		font-size: 12px;
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
 		height: 2em;
 		font-family: var(--ui-font-family);
-		color: var(--grey-500);
 		-webkit-user-select: none;
 		-moz-user-select: none;
 		user-select: none;
@@ -815,13 +838,13 @@
 	}
 
 	.page-changer.hovering {
-		color: var(--blue-600);
+		color: theme('colors.primary');
 		transition: color 200ms;
 	}
 
 	.page-changer:disabled {
+		@apply text-base-content-muted/25;
 		cursor: auto;
-		color: var(--grey-300);
 		-webkit-user-select: none;
 		-moz-user-select: none;
 		user-select: none;
@@ -834,6 +857,7 @@
 	}
 
 	.page-input {
+		@apply bg-base-200 text-base-content-muted;
 		box-sizing: content-box;
 		text-align: center;
 		padding: 0.25em 0.5em;
@@ -841,7 +865,6 @@
 		border: 1px solid transparent;
 		border-radius: 4px;
 		font-size: 12px;
-		color: var(--grey-500);
 	}
 
 	.table-footer {
@@ -868,23 +891,23 @@
 	}
 
 	.page-input.hovering {
-		border: 1px solid var(--grey-200);
+		border: 1px solid var(--base-300);
 	}
 
 	.page-input.error {
-		border: 1px solid var(--red-600);
+		border: 1px solid var(--negative);
 	}
 
 	.page-input::-moz-placeholder {
-		color: var(--grey-500);
+		@apply text-base-content-muted;
 	}
 
 	.page-input::placeholder {
-		color: var(--grey-500);
+		@apply text-base-content-muted;
 	}
 
 	button:enabled > .page-icon:hover {
-		color: var(--blue-800);
+		filter: brightness(0.8);
 	}
 
 	*:focus {
@@ -893,29 +916,29 @@
 
 	::-moz-placeholder {
 		/* Chrome, Firefox, Opera, Safari 10.1+ */
-		color: var(--grey-400);
+		@apply text-base-content-muted;
 		opacity: 1; /* Firefox */
 	}
 
 	::placeholder {
 		/* Chrome, Firefox, Opera, Safari 10.1+ */
-		color: var(--grey-400);
+		@apply text-base-content-muted;
 		opacity: 1; /* Firefox */
 	}
 
 	:-ms-input-placeholder {
 		/* Internet Explorer 10-11 */
-		color: var(--grey-400);
+		@apply text-base-content-muted;
 	}
 
 	::-ms-input-placeholder {
 		/* Microsoft Edge */
-		color: var(--grey-400);
+		@apply text-base-content-muted;
 	}
 
 	.noresults {
 		display: none;
-		color: var(--grey-400);
+		@apply text-base-content-muted;
 		text-align: center;
 		margin-top: 5px;
 	}

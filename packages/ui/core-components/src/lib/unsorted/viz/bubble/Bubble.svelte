@@ -13,6 +13,9 @@
 	import formatTitle from '@evidence-dev/component-utilities/formatTitle';
 	import { formatValue } from '@evidence-dev/component-utilities/formatting';
 	import getCompletedData from '@evidence-dev/component-utilities/getCompletedData';
+	import { getThemeStores } from '../../../themes/themes.js';
+
+	const { resolveColor } = getThemeStores();
 
 	export let y = undefined;
 	const ySet = y ? true : false; // Hack, see chart.svelte
@@ -23,9 +26,15 @@
 	export let name = undefined; // name to appear in legend (for single series graphics)
 
 	export let shape = undefined;
+
 	export let fillColor = undefined;
+	$: fillColorStore = resolveColor(fillColor);
+
 	export let opacity = 0.7; // opacity of both fill and outline (ECharts limitation)
+
 	export let outlineColor = undefined;
+	$: outlineColorStore = resolveColor(outlineColor);
+
 	export let outlineWidth = undefined;
 
 	let maxSize = 35;
@@ -34,6 +43,8 @@
 
 	export let useTooltip = false;
 	export let tooltipTitle;
+	export let seriesOrder = undefined;
+	export let seriesLabelFmt = undefined;
 
 	let multiSeries;
 	let tooltipOutput;
@@ -78,27 +89,6 @@
 		return Math.sqrt((newPointSize / maxData) * maxSizeSq);
 	}
 
-	let baseConfig = {
-		type: 'scatter',
-		label: {
-			show: false
-		},
-		labelLayout: { hideOverlap: true },
-		emphasis: {
-			focus: 'series'
-		},
-		symbolSize: function (newPoint) {
-			return bubbleSize(newPoint);
-		},
-		symbol: shape,
-		itemStyle: {
-			color: fillColor,
-			opacity: opacity,
-			borderColor: outlineColor,
-			borderWidth: outlineWidth
-		}
-	};
-
 	// Tooltip settings (scatter and bubble charts require different tooltip than default)
 
 	let tooltipOpts;
@@ -106,7 +96,7 @@
 	if (useTooltip) {
 		tooltipOpts = {
 			tooltip: {
-				formatter: function (params) {
+				formatter: function BubbleTooltipFormatter(params) {
 					if (multiSeries) {
 						if (tooltipTitle) {
 							tooltipOutput = `<span id="tooltip" style='font-weight:600'>${formatValue(
@@ -135,7 +125,7 @@
                             ${formatTitle(
 															size,
 															sizeFormat
-														)} <span style='font-weight: 400; color:var(--grey-400);'> (size)</span>: <span style='float:right; margin-left: 15px;'>${formatValue(
+														)} <span style='font-weight: 400;'> (size)</span>: <span style='float:right; margin-left: 15px;'>${formatValue(
 															params.value[2],
 															sizeFormat
 														)}</span>`;
@@ -160,7 +150,7 @@
                             ${formatTitle(
 															size,
 															sizeFormat
-														)} <span style='font-weight: 400; color:var(--grey-400);'> (size)</span>: <span style='float:right; margin-left: 15px;'>${formatValue(
+														)} <span style='font-weight: 400;'> (size)</span>: <span style='float:right; margin-left: 15px;'>${formatValue(
 															params.value[2],
 															sizeFormat
 														)}</span>`;
@@ -188,7 +178,7 @@
                             <span style='font-weight: 400;'>${formatTitle(
 															size,
 															sizeFormat
-														)} <span style='font-weight: 400; color:var(--grey-400);'> (size)</span>:</span> <span style='float:right; margin-left: 15px;'>${formatValue(
+														)} <span style='font-weight: 400;'> (size)</span>:</span> <span style='float:right; margin-left: 15px;'>${formatValue(
 															params.value[2],
 															sizeFormat
 														)}</span>`;
@@ -210,7 +200,7 @@
                             <span style='font-weight: 600;'>${formatTitle(
 															size,
 															sizeFormat
-														)} <span style='font-weight: 400; color:var(--grey-400);'> (size)</span>:</span> <span style='float:right; margin-left: 15px;'>${formatValue(
+														)} <span style='font-weight: 400;'> (size)</span>:</span> <span style='float:right; margin-left: 15px;'>${formatValue(
 															params.value[2],
 															sizeFormat
 														)}</span>`;
@@ -221,14 +211,34 @@
 			}
 		};
 
-		baseConfig = { ...baseConfig, ...tooltipOpts };
-
 		tooltipOverride = {
 			tooltip: {
 				trigger: 'item'
 			}
 		};
 	}
+
+	$: baseConfig = {
+		type: 'scatter',
+		label: {
+			show: false
+		},
+		labelLayout: { hideOverlap: true },
+		emphasis: {
+			focus: 'series'
+		},
+		symbolSize: function (newPoint) {
+			return bubbleSize(newPoint);
+		},
+		symbol: shape,
+		itemStyle: {
+			color: $fillColorStore,
+			opacity: opacity,
+			borderColor: $outlineColorStore,
+			borderWidth: outlineWidth
+		},
+		...tooltipOpts
+	};
 
 	// If user has passed in custom echarts config options, append to the baseConfig:
 	$: if (options) {
@@ -246,10 +256,14 @@
 		name,
 		xMismatch,
 		columnSummary,
+		seriesOrder,
 		size,
-		tooltipTitle
+		tooltipTitle,
+		undefined, // y2 (not needed)
+		seriesLabelFmt
 	);
 	$: config.update((d) => {
+		console.log('Bubble updating config', d);
 		d.series.push(...seriesConfig);
 		// Push series into legend:
 		d.legend.data.push(...seriesConfig.map((d) => d.name.toString()));

@@ -3,17 +3,19 @@
 </script>
 
 <script>
-	import { getContext } from 'svelte';
+	import { getContext, onDestroy } from 'svelte';
 	import { propKey, strictBuild } from '@evidence-dev/component-utilities/chartContext';
+	import { getThemeStores } from '../../../themes/themes.js';
+	import { checkDeprecatedColor } from '../../../deprecated-colors.js';
+
+	const { resolveColor, resolveColorScale } = getThemeStores();
 
 	let props = getContext(propKey);
 
 	let error;
 
+	const identifier = Symbol();
 	export let id;
-
-	// Simple check of column name in dataset. Should be replaced with robust error handling in the future:
-	$: checkColumnName();
 
 	/**
 	 * Check column name and handle error if doesn't exist
@@ -32,6 +34,9 @@
 		}
 	}
 
+	// COLUMN CONTENT TYPES:
+	export let contentType = undefined;
+
 	export let title = undefined;
 	export let align = undefined;
 	if (align === 'centre') {
@@ -42,9 +47,6 @@
 
 	export let wrapTitle = false;
 	$: wrapTitle = wrapTitle === 'true' || wrapTitle === true;
-
-	// COLUMN CONTENT TYPES:
-	export let contentType = undefined;
 
 	// Images:
 	export let height = undefined;
@@ -73,24 +75,18 @@
 	export let colorMin = undefined;
 	export let colorMid = undefined;
 	export let colorBreakpoints = undefined;
-	export let scaleColor = 'green'; // name of predefined color palette, custom color, array of custom colors
-	export let scaleColumn = undefined;
 
-	let colorList = {
-		green: ['white', 'hsla(129, 33%, 57%,1)'],
-		red: ['white', 'hsla(0, 56%, 56%,1)'],
-		blue: ['white', 'hsla(198, 56%, 56%,1)']
-	};
-
-	let colorPalette;
-	if (scaleColor instanceof Array) {
-		colorPalette = scaleColor;
-	} else {
-		colorPalette = colorList[scaleColor];
-		if (colorPalette == undefined) {
-			colorPalette = ['white', scaleColor];
-		}
+	/** @deprecated Use colorScale instead */
+	export let scaleColor = undefined;
+	$: if (scaleColor) {
+		console.warn('[Column] scaleColor is deprecated. Use colorScale instead.');
 	}
+	$: colorScale = checkDeprecatedColor('Column', 'colorScale', colorScale);
+
+	export let colorScale = 'default';
+	$: colorScaleStore = resolveColorScale(colorScale ?? colorScale);
+
+	export let scaleColumn = undefined;
 
 	// Delta:
 	export let downIsGood = false;
@@ -104,6 +100,28 @@
 	export let chip = false;
 	$: chip = chip === 'true' || chip === true;
 
+	// Sparkline:
+	export let sparkWidth = undefined;
+	export let sparkHeight = undefined;
+	export let sparkColor = undefined;
+	export let sparkX = undefined;
+	export let sparkY = undefined;
+	export let sparkYScale = false;
+	$: sparkYScale = sparkYScale === 'true' || sparkYScale === true;
+
+	// Bar Viz:
+	export let barColor = '#a5cdee';
+	$: barColorStore = resolveColor(barColor);
+
+	export let negativeBarColor = '#fca5a5';
+	$: negativeBarColorStore = resolveColor(negativeBarColor);
+
+	export let backgroundColor = 'transparent';
+	$: backgroundColorStore = resolveColor(backgroundColor);
+
+	export let hideLabels = false;
+	$: hideLabels = hideLabels === 'true' || hideLabels === true;
+
 	// Column Groups:
 	export let colGroup = undefined;
 
@@ -115,38 +133,48 @@
 	$: redNegatives = redNegatives === 'true' || redNegatives === true;
 
 	$: options = {
-		id: id,
-		title: title,
-		align: align,
-		wrap: wrap,
-		wrapTitle: wrapTitle,
-		contentType: contentType,
-		height: height,
-		width: width,
-		alt: alt,
-		openInNewTab: openInNewTab,
-		linkLabel: linkLabel,
-		fmt: fmt,
-		fmtColumn: fmtColumn,
-		totalAgg: totalAgg,
-		totalFmt: totalFmt,
-		subtotalFmt: subtotalFmt,
-		weightCol: weightCol,
-		downIsGood: downIsGood,
-		deltaSymbol: deltaSymbol,
-		chip: chip,
-		neutralMin: neutralMin,
-		neutralMax: neutralMax,
-		showValue: showValue,
-		colorMax: colorMax,
-		colorMin: colorMin,
-		scaleColor: scaleColor,
-		scaleColumn: scaleColumn,
-		colGroup: colGroup,
-		colorMid: colorMid,
-		colorBreakpoints: colorBreakpoints,
-		colorPalette: colorPalette,
-		redNegatives: redNegatives
+		identifier,
+		id,
+		title,
+		align,
+		wrap,
+		wrapTitle,
+		contentType,
+		height,
+		width,
+		alt,
+		openInNewTab,
+		linkLabel,
+		fmt,
+		fmtColumn,
+		totalAgg,
+		totalFmt,
+		subtotalFmt,
+		weightCol,
+		downIsGood,
+		deltaSymbol,
+		chip,
+		neutralMin,
+		neutralMax,
+		showValue,
+		colorMax,
+		colorMin,
+		colorScale: $colorScaleStore,
+		scaleColumn,
+		colGroup,
+		colorMid,
+		colorBreakpoints,
+		redNegatives,
+		sparkWidth,
+		sparkHeight,
+		sparkColor,
+		sparkX,
+		sparkY,
+		sparkYScale,
+		barColor: $barColorStore,
+		negativeBarColor: $negativeBarColorStore,
+		backgroundColor: $backgroundColorStore,
+		hideLabels
 	};
 
 	/**
@@ -155,8 +183,11 @@
 	 * @returns {void}
 	 */
 	const updateProps = () => {
+		// Simple check of column name in dataset. Should be replaced with robust error handling in the future:
+		checkColumnName();
+
 		props.update((d) => {
-			const matchingIndex = d.columns.findIndex((c) => c.id === id);
+			const matchingIndex = d.columns.findIndex((c) => c.identifier === identifier);
 			if (matchingIndex === -1) {
 				d.columns.push(options);
 			} else {
@@ -170,4 +201,11 @@
 		});
 	};
 	$: options, updateProps();
+
+	onDestroy(() => {
+		props.update((d) => {
+			d.columns = d.columns.filter((c) => c.identifier !== identifier);
+			return d;
+		});
+	});
 </script>

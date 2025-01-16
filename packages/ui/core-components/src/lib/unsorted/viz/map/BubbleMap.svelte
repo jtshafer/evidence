@@ -4,8 +4,17 @@
 
 <script>
 	import Bubbles from './components/Bubbles.svelte';
-	import BaseMap from './BaseMap.svelte';
-	import ErrorChart from '../core/ErrorChart.svelte';
+	import BaseMap from './_BaseMap.svelte';
+	import { Query } from '@evidence-dev/sdk/usql';
+	import { getThemeStores } from '../../../themes/themes.js';
+
+	const { resolveColorPalette } = getThemeStores();
+
+	/** @type {'pass' | 'warn' | 'error' | undefined} */
+	export let emptySet = undefined;
+
+	/** @type {string | undefined} */
+	export let emptyMessage = undefined;
 
 	let error;
 
@@ -41,19 +50,60 @@
 	export let startingZoom = undefined;
 
 	/** @type {number} */
-	export let height = undefined; // height in pixels
+	export let height = 300; // height in pixels
 
 	/** @type {string} */
 	export let basemap = undefined;
 
 	/** @type {string|undefined} */
 	export let title = undefined;
+
+	/** @type {'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'} */
+	export let legendPosition = 'bottomLeft';
+	/** @type {'categorical' | 'scalar' | undefined} */
+	export let legendType = undefined;
+
+	/** @type {string[]|undefined} */
+	export let colorPalette = undefined;
+	$: colorPaletteStore = resolveColorPalette(colorPalette);
+
+	/** @type {boolean} */
+	export let legend = true;
+
+	/** @type {string|undefined} */
+	export let attribution = undefined;
+
+	const chartType = 'Bubble Map';
+
+	const initialHash = Query.isQuery(data) ? data.hash : undefined;
+	$: isInitial = data?.hash === initialHash;
 </script>
 
-{#if error}
-	<ErrorChart {error} chartType="Bubble Map" />
-{:else}
-	<BaseMap {startingLat} {startingLong} {startingZoom} {height} {basemap} {title}>
-		<Bubbles {data} {lat} {long} {size} {...$$restProps} />
-	</BaseMap>
-{/if}
+<BaseMap
+	let:data
+	{data}
+	{startingLat}
+	{startingLong}
+	{startingZoom}
+	{height}
+	{basemap}
+	{title}
+	{legendPosition}
+	{isInitial}
+	{chartType}
+	{emptySet}
+	{emptyMessage}
+	{error}
+	{attribution}
+>
+	<Bubbles
+		{data}
+		{lat}
+		{long}
+		{size}
+		colorPalette={colorPaletteStore}
+		{legendType}
+		{legend}
+		{...$$restProps}
+	/>
+</BaseMap>

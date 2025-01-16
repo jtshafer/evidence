@@ -9,6 +9,8 @@
 	import 'leaflet/dist/leaflet.css';
 	import { EvidenceMap } from './EvidenceMap.js';
 	import { mapContextKey } from './constants.js';
+	import Skeleton from '../../../atoms/skeletons/Skeleton.svelte';
+	import Legend from './components/Legend.svelte';
 
 	let mapElement;
 
@@ -30,7 +32,7 @@
 	export let height = 300; // height in pixels
 
 	/** @type {string} */
-	export let basemap = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+	export let basemap = undefined;
 
 	/** @type {string|undefined} */
 	export let title = undefined;
@@ -38,17 +40,47 @@
 	/** @type {string|undefined} */
 	let error = undefined;
 
+	/** @type {string|undefined} */
+	export let attribution = undefined;
+
 	const evidenceMap = new EvidenceMap();
 	setContext(mapContextKey, evidenceMap);
+
+	const allGeoJsonLoaded = evidenceMap.allGeoJsonLoaded;
+
+	let legendData = evidenceMap.legendData;
+
+	/** @type {'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'} */
+	export let legendPosition = 'bottomLeft';
+
+	$: if (legendPosition) {
+		evidenceMap.updateLegendPosition(legendPosition);
+	}
+
+	let internalError = evidenceMap.internalError;
+
+	$: if ($internalError !== undefined) {
+		error = $internalError;
+	}
+
+	/** @type {'Point Map'|'Area Map'|'Bubble Map'|'Map'} */
+	export let chartType = 'Map';
 
 	// Lifecycle hooks:
 	onMount(async () => {
 		if (browser) {
 			try {
 				const initCoords =
-					startingLat ?? false ? [startingLat, startingLong] : [defaultLat, defaultLong];
+					(startingLat ?? false) ? [startingLat, startingLong] : [defaultLat, defaultLong];
 
-				await evidenceMap.init(mapElement, basemap, initCoords, startingZoom, userDefinedView);
+				await evidenceMap.init(
+					mapElement,
+					basemap ?? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+					initCoords,
+					startingZoom,
+					userDefinedView,
+					attribution
+				);
 				return () => evidenceMap.cleanup();
 			} catch (e) {
 				error = e.message;
@@ -59,9 +91,9 @@
 </script>
 
 {#if error}
-	<ErrorChart {error} chartType="Map" />
+	<ErrorChart {error} title={chartType} />
 {:else}
-	<div class="my-5 break-inside-avoid">
+	<div class="relative break-inside-avoid">
 		{#if title}
 			<h4 class="markdown mb-2">{title}</h4>
 		{/if}
@@ -70,8 +102,22 @@
 			style="height: {height}px;"
 			bind:this={mapElement}
 		>
-			<slot></slot>
+			<div on:dispatcherror={(e) => (error = e.detail)}>
+				<slot />
+			</div>
+			{#if $legendData}
+				<Legend {legendData} {legendPosition} {height} />
+			{/if}
 		</div>
+
+		{#if !$allGeoJsonLoaded}
+			<div
+				class="absolute left-0 right-0 bottom-0 w-full *:m-0 bg-base-100"
+				style="height: {height}px"
+			>
+				<Skeleton />
+			</div>
+		{/if}
 	</div>
 {/if}
 
@@ -85,7 +131,7 @@
 	}
 
 	div :global(.leaflet-popup-content-wrapper) {
-		background-color: white;
+		background-color: var(--base-100);
 		box-shadow: 0 1px 3px rgb(0, 0, 0, 0.4);
 		border-radius: 4px;
 		font-family: 'Inter', sans-serif;
@@ -97,7 +143,7 @@
 	}
 
 	div :global(.leaflet-popup-tip) {
-		background-color: white;
+		background-color: var(--base-100);
 		display: none;
 	}
 
@@ -107,12 +153,13 @@
 		display: none;
 	}
 
-	div :global(.leaflet-tooltip) {
+	div :global(.leaflet-tooltip),
+	div :global(.legend-font) {
 		font-family: 'Inter', sans-serif;
 	}
 
 	div :global(.leaflet-tooltip::before) {
-		background-color: white;
+		background-color: var(--base-100);
 		display: none;
 	}
 </style>
