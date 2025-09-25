@@ -6,6 +6,7 @@ import {
 	getPlatformFeatures,
 	VoidLogger
 } from '@duckdb/duckdb-wasm';
+import { addBasePath } from '@evidence-dev/sdk/utils/svelte';
 
 export { tableFromIPC } from 'apache-arrow';
 
@@ -54,6 +55,8 @@ export async function initDB() {
 
 		// use an intermediate variable to prevent db from being a not-ready database
 		const _db = new AsyncDuckDB(logger, worker);
+		window[Symbol.for('EVIDENCE_QUERY_ENGINE')] = _db;
+
 		await _db.instantiate(DUCKDB_CONFIG.mainModule);
 		db = _db;
 
@@ -66,6 +69,12 @@ export async function initDB() {
 			}
 		});
 		connection = await db.connect();
+
+		// https://duckdb.org/2024/09/09/announcing-duckdb-110.html#breaking-sql-changes
+		await connection.query('SET ieee_floating_point_ops = false;');
+		// https://duckdb.org/2024/02/13/announcing-duckdb-0100.html#breaking-sql-changes
+		await connection.query('SET old_implicit_casting = true;');
+
 		resolveInit();
 	} catch (e) {
 		rejectInit(e);
@@ -124,7 +133,7 @@ export async function setParquetURLs(urls, append = false) {
 					await emptyDbFs(file_name);
 					await emptyDbFs(url);
 				}
-				await db.registerFileURL(file_name, path, DuckDBDataProtocol.HTTP, false);
+				await db.registerFileURL(file_name, addBasePath(path), DuckDBDataProtocol.HTTP, false);
 				await connection.query(
 					`CREATE OR REPLACE VIEW "${source}"."${table}" AS (SELECT * FROM read_parquet('${file_name}'));`
 				);
