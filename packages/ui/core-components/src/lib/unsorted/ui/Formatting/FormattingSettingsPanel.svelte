@@ -1,11 +1,15 @@
 <script>
-	export let customFormattingSettings;
+	// @ts-check
+
 	import { BUILT_IN_FORMATS } from '@evidence-dev/component-utilities/builtInFormats';
 	import BuiltInFormatGrid from './BuiltInFormatGrid.svelte';
 	import CustomFormatsSection from './CustomFormatsSection.svelte';
 	import CollapsibleTableSection from './CollapsibleTableSection.svelte';
 	import CurrencyFormatGrid from './CurrencyFormatGrid.svelte';
 	import Prism from '../QueryViewerSupport/Prismjs.svelte';
+
+	/** @type {{ customFormats?: { formatTag: string }[] }}*/
+	export let customFormattingSettings;
 
 	let exampleQuery = `select 
   growth as growth_pct, -- formatted as a percentage
@@ -33,12 +37,12 @@ from table`;
 			</p>
 			<p>In the Value component, you can use the <code>fmt</code> prop</p>
 			<div class="code-container p-2">
-				<Prism language="html" code={valueExample} />
+				<Prism code={valueExample} />
 			</div>
 			<br />
 			<p>In charts, you can use the <code>xFmt</code> and <code>yFmt</code> props</p>
 			<div class="code-container p-2">
-				<Prism language="jsx" code={componentExample} />
+				<Prism code={componentExample} />
 			</div>
 			<br />
 			<p>
@@ -46,7 +50,7 @@ from table`;
 				aliasing your column names and appending a format. For example:
 			</p>
 			<div class="code-container p-2">
-				<Prism language="sql" code={exampleQuery} />
+				<Prism code={exampleQuery} />
 			</div>
 			<p />
 		</div>
@@ -89,7 +93,7 @@ from table`;
 	<footer>
 		<span
 			>Learn more about <a
-				class="docs-link"
+				class="text-primary hover:brightness-110 active:brightness-90 transition"
 				target="_blank"
 				rel="noreferrer"
 				href="https://docs.evidence.dev/core-concepts/formatting/"
@@ -107,16 +111,16 @@ from table`;
 
 	.formatting-settings-box {
 		margin-top: 2em;
-		border-top: 1px solid var(--grey-200);
-		border-left: 1px solid var(--grey-200);
-		border-right: 1px solid var(--grey-200);
+		border-top: 1px solid var(--base-300);
+		border-left: 1px solid var(--base-300);
+		border-right: 1px solid var(--base-300);
 		border-radius: 5px 5px 0 0;
 		font-size: 14px;
 		font-family: var(--ui-font-family);
 		min-width: 100%;
 	}
 	.panel {
-		border-top: 1px solid var(--grey-200);
+		border-top: 1px solid var(--base-300);
 		padding: 0em 1em 1em 1em;
 	}
 
@@ -125,36 +129,21 @@ from table`;
 	}
 
 	div.code-container {
-		background-color: var(--grey-100);
-		border: 1px solid var(--grey-200);
+		background-color: var(--base-200);
+		border: 1px solid var(--base-300);
 		overflow: auto;
 		border-radius: 4px;
 	}
 
-	/* .format-tag {
-    background-color: var(--blue-100);
-    border-radius: 4px;
-    padding: 2px 4px 2px 4px;
-  } */
-
 	footer {
-		border: 1px solid var(--grey-200);
+		border: 1px solid var(--base-300);
 		border-radius: 0 0 5px 5px;
-		background-color: var(--grey-100);
+		background-color: var(--base-200);
 		padding: 1em;
 		display: flex;
 		font-size: 14px;
 		align-items: center;
 		font-family: var(--ui-font-family);
-	}
-
-	.docs-link {
-		color: var(--blue-600);
-		text-decoration: none;
-	}
-
-	.docs-link:hover {
-		color: var(--blue-800);
 	}
 
 	h2 {
