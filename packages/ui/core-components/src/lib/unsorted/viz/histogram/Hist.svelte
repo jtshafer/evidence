@@ -11,14 +11,20 @@
 	import ecStat from 'echarts-stat';
 	import getDistinctValues from '@evidence-dev/component-utilities/getDistinctValues';
 	import { formatValue } from '@evidence-dev/component-utilities/formatting';
+	import { getThemeStores } from '../../../themes/themes.js';
+
+	const { resolveColor } = getThemeStores();
 
 	export let x = undefined;
 	const xSet = x ? true : false; // Hack, see chart.svelte
 
 	export let fillColor = undefined;
+	$: fillColorStore = resolveColor(fillColor);
+
 	export let fillOpacity = 1;
 
 	// Prop check. If local props supplied, use those. Otherwise fall back to global props.
+	let data;
 	$: data = $props.data;
 	$: x = x ?? $props.x;
 	$: x = xSet ? x : $props.x;
@@ -72,7 +78,7 @@
 					height: size[1]
 				},
 				style: {
-					fill: fillColor ?? barColor,
+					fill: $fillColorStore ?? barColor,
 					opacity: fillOpacity
 				}
 			};
