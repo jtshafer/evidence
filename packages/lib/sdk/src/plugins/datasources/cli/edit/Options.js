@@ -53,10 +53,14 @@ const resolveChildOptions = (fieldSpec, prop, sourceOptions, opts) => {
  */
 
 /**
+ * @typedef {*} OptionsObj
+ */
+
+/**
  * @param {import('../../Datasources.js').Datasource["options"]} spec
  * @param {*} sourceOptions
  * @param {OptionsOpts} [opts]
- * @returns {*}
+ * @returns {OptionsObj}
  */
 export const Options = (spec, sourceOptions, opts) => {
 	return new Proxy(sourceOptions, {
@@ -64,6 +68,7 @@ export const Options = (spec, sourceOptions, opts) => {
 		ownKeys() {
 			const output = [];
 			for (const [specKey, specEntry] of Object.entries(spec)) {
+				if (specEntry.virtual) continue;
 				const valueKey = specEntry.children && specEntry.nest ? `_${specKey}` : specKey;
 				if (
 					!opts?.specMode /* Value Mode */ &&
