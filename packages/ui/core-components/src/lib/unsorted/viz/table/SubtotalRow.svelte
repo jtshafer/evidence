@@ -6,29 +6,24 @@
 		getFormatObjectFromString
 	} from '@evidence-dev/component-utilities/formatting';
 	import TableCell from './TableCell.svelte';
-	import { getContext } from 'svelte';
-	import { propKey } from '@evidence-dev/component-utilities/chartContext';
-	const props = getContext(propKey);
 
 	export let groupName = undefined;
 	export let currentGroupData = undefined;
 	export let columnSummary = undefined;
-	export let rowColor = 'var(--grey-100)';
+	export let rowColor = undefined;
 	export let groupBy = undefined;
 	export let groupType = undefined;
 	export let fontColor = undefined;
-	export let finalColumnOrder = undefined;
+	export let orderedColumns = undefined;
 	export let compact = undefined;
 </script>
 
 <tr
-	class=" w-full border-b-gray-400 border-b-[1px]"
+	class="w-full border-b border-base-content-muted bg-base-200"
 	style:background-color={rowColor}
 	style:color={fontColor}
 >
-	{#each $props.columns.length > 0 ? $props.columns.sort((a, b) => finalColumnOrder.indexOf(a.id) - finalColumnOrder.indexOf(b.id)) : columnSummary
-				.filter((d) => d.show === true)
-				.sort((a, b) => finalColumnOrder.indexOf(a.id) - finalColumnOrder.indexOf(b.id)) as column}
+	{#each orderedColumns as column}
 		{@const useCol = safeExtractColumn(column, columnSummary)}
 		{@const column_format = column.fmt
 			? getFormatObjectFromString(column.fmt, useCol.format?.valueType)
@@ -39,11 +34,7 @@
 				? getFormatObjectFromString(column.totalFmt)
 				: column_format}
 		{@const useFormat = format?.valueType === 'date' ? '' : format}
-		<TableCell
-			class="{useCol.type} font-medium border-t-[1px] border-t-gray-300"
-			{compact}
-			align={column.align}
-		>
+		<TableCell class="{useCol.type} font-medium" {compact} align={column.align}>
 			{#if column.id !== groupBy}
 				{#if column.contentType === 'delta'}
 					<Delta
