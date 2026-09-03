@@ -8,11 +8,18 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import sade from 'sade';
 import { logQueryEvent } from '@evidence-dev/telemetry';
-
+import { enableDebug } from '@evidence-dev/sdk/utils';
 import { loadEnv } from 'vite';
+import { createHash } from 'crypto';
+
+const increaseNodeMemoryLimit = () => {
+	// Don't override the memory limit if it's already set
+	if (process.env.NODE_OPTIONS?.includes('--max-old-space-size')) return;
+	process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ''} --max-old-space-size=4096`;
+};
 
 const loadEnvFile = () => {
-	const envFile = loadEnv('', '.', ['EVIDENCE_']);
+	const envFile = loadEnv('', '.', ['EVIDENCE_', 'VITE_']);
 	Object.assign(process.env, envFile);
 };
 
@@ -29,12 +36,7 @@ const populateTemplate = function () {
 	// - local settings
 	// - telemetry profile
 	// - static folder (mainly to preserve the data directory)
-	const keepers = new Set([
-		'evidence.settings.json',
-		'.profile.json',
-		'static',
-		'.evidence-queries'
-	]);
+	const keepers = new Set(['.profile.json', 'static', '.evidence-queries']);
 	fs.readdirSync('./.evidence/template/').forEach((file) => {
 		if (!keepers.has(file)) fs.removeSync(path.join('./.evidence/template/', file));
 	});
@@ -151,12 +153,19 @@ const watchPatterns = [
 	}
 ];
 
+function removeStaticDir(dir) {
+	const staticlessDir = path.normalize(dir).split(path.sep).slice(1);
+	return path.join(...staticlessDir);
+}
+
 const strictMode = function () {
 	process.env['VITE_BUILD_STRICT'] = true;
 };
 const buildHelper = function (command, args) {
 	const watchers = runFileWatcher(watchPatterns);
 	const flatArgs = flattenArguments(args);
+
+	const dataDir = process.env.EVIDENCE_DATA_DIR ?? './static/data';
 
 	// Run svelte kit build in the hidden directory
 	const child = spawn(command, flatArgs, {
@@ -167,14 +176,49 @@ const buildHelper = function (command, args) {
 			...process.env,
 			// used for source query HMR
 			EVIDENCE_DATA_URL_PREFIX: process.env.EVIDENCE_DATA_URL_PREFIX ?? 'static/data',
-			EVIDENCE_DATA_DIR: process.env.EVIDENCE_DATA_DIR ?? './static/data'
+			EVIDENCE_DATA_DIR: process.env.EVIDENCE_DATA_DIR ?? './static/data',
+			EVIDENCE_IS_BUILDING: 'true'
 		}
 	});
 	// Copy the outputs to the root of the project upon successful exit
 	child.on('exit', function (code) {
+		const outDir = '.evidence/template/build';
 		if (code === 0) {
-			fs.copySync('./.evidence/template/build', './build');
-			console.log('Build complete --> /build ');
+			const staticlessDataDir = removeStaticDir(dataDir);
+			const buildDataDir = path.join(outDir, staticlessDataDir);
+			const manifestFile = path.join(buildDataDir, 'manifest.json');
+
+			if (fs.existsSync(manifestFile)) {
+				const manifest = fs.readJsonSync(manifestFile);
+				for (const files of Object.values(manifest.renderedFiles)) {
+					for (let i = 0; i < files.length; i++) {
+						// <url prefix>/sqlite/transactions/transactions.parquet
+						//              ^^^^^^ ^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^^
+						const nDiskParts = 3;
+
+						const diskParts = files[i].split('/').slice(-nDiskParts).join('/');
+						const filePath = path.posix.join(buildDataDir, diskParts);
+						if (!fs.existsSync(filePath)) continue;
+
+						const contents = fs.readFileSync(filePath);
+						const hash = createHash('md5').update(contents).digest('hex');
+
+						const newDiskPart = path.posix.join(
+							path.dirname(diskParts),
+							hash,
+							path.basename(diskParts)
+						);
+						const newFilePath = path.join(buildDataDir, newDiskPart);
+						fs.moveSync(filePath, newFilePath);
+
+						files[i] = files[i].replace(diskParts, newDiskPart);
+					}
+				}
+				fs.writeJsonSync(manifestFile, manifest);
+			}
+
+			fs.copySync(outDir, './build');
+			console.log(`Build complete --> ${process.env.EVIDENCE_BUILD_DIR ?? './build'} `);
 		} else {
 			console.error('Build failed');
 		}
@@ -193,10 +237,13 @@ prog
 	.option('--debug', 'Enables verbose console logs')
 	.describe('launch the local evidence development environment')
 	.action((args) => {
+		increaseNodeMemoryLimit();
 		if (args.debug) {
-			process.env.VITE_EVIDENCE_DEBUG = true;
+			enableDebug();
 			delete args.debug;
 		}
+
+		loadEnvFile();
 
 		const manifestExists = fs.lstatSync(
 			path.join('.evidence', 'template', 'static', 'data', 'manifest.json'),
@@ -248,6 +295,7 @@ prog
 	.option('--include-values', 'Includes Environment Variable Values, this will show secrets!')
 	.describe('Prints out Evidence variables from the environment and .env file')
 	.action((args) => {
+		increaseNodeMemoryLimit();
 		const { 'include-values': includeValues } = args;
 		loadEnvFile();
 		const evidenceVars = Object.fromEntries(
@@ -265,8 +313,9 @@ prog
 	.option('--debug', 'Enables verbose console logs')
 	.describe('build production outputs')
 	.action((args) => {
+		increaseNodeMemoryLimit();
 		if (args.debug) {
-			process.env.VITE_EVIDENCE_DEBUG = true;
+			enableDebug();
 			delete args.debug;
 		}
 		loadEnvFile();
@@ -281,8 +330,9 @@ prog
 	.option('--debug', 'Enables verbose console logs')
 	.describe('build production outputs and fails on error')
 	.action((args) => {
+		increaseNodeMemoryLimit();
 		if (args.debug) {
-			process.env.VITE_EVIDENCE_DEBUG = true;
+			enableDebug();
 			delete args.debug;
 		}
 		loadEnvFile();
@@ -328,11 +378,9 @@ prog
 
 		// The data directory is defined at import time (because we aren't using getters, and it is set once)
 		// So we need to import it here to give the opportunity to override it above
-		const sourcesCli = await import('@evidence-dev/sdk/plugins/datasources').then(
-			(m) => m.sourcesCli
-		);
+		const cli = await import('@evidence-dev/sdk/legacy-compat').then((m) => m.cli);
 		logQueryEvent('build-sources-start');
-		await sourcesCli(...process.argv);
+		await cli(...process.argv);
 		return;
 	});
 
@@ -340,8 +388,9 @@ prog
 	.command('preview')
 	.describe('preview the production build')
 	.action((args) => {
+		increaseNodeMemoryLimit();
 		if (args.debug) {
-			process.env.VITE_EVIDENCE_DEBUG = true;
+			enableDebug();
 			delete args.debug;
 		}
 		loadEnvFile();
@@ -356,8 +405,13 @@ prog
 		const flatArgs = flattenArguments(args);
 
 		logQueryEvent('preview-server-start', undefined, undefined, undefined, true);
-		// We will likely need to modify this for SPA mode previews
-		const child = spawn('npx serve build', flatArgs, {
+
+		let command = 'npx serve build';
+		if (process.env.VITE_EVIDENCE_SPA === 'true') {
+			command += ' -s';
+		}
+
+		const child = spawn(command, flatArgs, {
 			shell: true,
 			detached: false,
 			stdio: 'inherit'
@@ -366,6 +420,15 @@ prog
 		child.on('exit', function () {
 			child.kill();
 		});
+	});
+
+prog
+	.command('upgrade')
+	.describe('upgrade evidence to the latest version')
+	.action(async () => {
+		const cli = await import('@evidence-dev/sdk/legacy-compat').then((m) => m.cli);
+		await cli(...process.argv);
+		return;
 	});
 
 prog.parse(process.argv);
