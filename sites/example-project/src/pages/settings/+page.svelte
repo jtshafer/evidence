@@ -1,8 +1,10 @@
 <script>
-	/** @type {import("./$types").PageLoadData} */
+	// @ts-check
+
+	/** @type {import("./$types").PageData} */
 	export let data;
-	let { settings, customFormattingSettings, datasourceSettings, plugins } = data;
-	$: ({ settings, customFormattingSettings, datasourceSettings, plugins } = data);
+	let { settings, customFormattingSettings, sources, plugins } = data;
+	$: ({ settings, customFormattingSettings, sources, plugins } = data);
 
 	import { dev } from '$app/environment';
 
@@ -18,9 +20,9 @@
 {#if dev}
 	<div class="mt-12">
 		<VersionControlPanel {settings} />
-		<SourceConfig availableSourcePlugins={plugins} sources={datasourceSettings} />
-		<DeploySettingsPanel {settings} {datasourceSettings} />
-		<FormattingSettingsPanel {settings} {customFormattingSettings} />
+		<SourceConfig availableSourcePlugins={plugins} {sources} />
+		<DeploySettingsPanel {settings} {sources} />
+		<FormattingSettingsPanel {customFormattingSettings} />
 		<TelemetrySettingsPanel {settings} />
 	</div>
 	<br />
