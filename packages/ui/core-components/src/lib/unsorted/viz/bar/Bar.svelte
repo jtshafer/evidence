@@ -19,6 +19,9 @@
 		formatValue,
 		getFormatObjectFromString
 	} from '@evidence-dev/component-utilities/formatting';
+	import { getThemeStores } from '../../../themes/themes.js';
+
+	const { resolveColor } = getThemeStores();
 
 	export let y = undefined;
 	const ySet = y ? true : false; // Hack, see chart.svelte
@@ -32,15 +35,25 @@
 	export let stackName = undefined;
 
 	export let fillColor = undefined;
+	$: fillColorStore = resolveColor(fillColor);
+
 	export let fillOpacity = undefined;
+
 	export let outlineColor = undefined;
+	$: outlineColorStore = resolveColor(outlineColor);
+
 	export let outlineWidth = undefined;
 
 	export let labels = false;
 	$: labels = labels === 'true' || labels === true;
+	export let seriesLabels = true;
+	$: seriesLabels = seriesLabels === 'true' || seriesLabels === true;
 	export let labelSize = 11;
 	export let labelPosition = undefined;
+
 	export let labelColor = undefined;
+	$: labelColorStore = resolveColor(labelColor);
+
 	export let labelFmt = undefined;
 	let labelFormat;
 	if (labelFmt) {
@@ -62,7 +75,7 @@
 	export let stackTotalLabel = true;
 	$: stackTotalLabel = stackTotalLabel === 'true' || stackTotalLabel === true;
 	export let showAllLabels = false;
-
+	export let seriesOrder = undefined;
 	let barMaxWidth = 60;
 
 	// Prop check. If local props supplied, use those. Otherwise fall back to global props.
@@ -157,7 +170,7 @@
 		type: 'bar',
 		stack: stackName,
 		label: {
-			show: labels,
+			show: labels && seriesLabels,
 			// formatter: function (params) {
 			// 	let output;
 			// 	output =
@@ -178,7 +191,7 @@
 			},
 			position: labelPosition,
 			fontSize: labelSize,
-			color: labelColor
+			color: $labelColorStore
 		},
 		labelLayout: {
 			hideOverlap: showAllLabels ? false : true
@@ -188,12 +201,14 @@
 		},
 		barMaxWidth: barMaxWidth,
 		itemStyle: {
-			color: fillColor,
+			color: $fillColorStore,
 			opacity: fillOpacity,
-			borderColor: outlineColor,
+			borderColor: $outlineColorStore,
 			borderWidth: outlineWidth
 		}
 	};
+
+	export let seriesLabelFmt = undefined;
 
 	$: seriesConfig = getSeriesConfig(
 		data,
@@ -205,9 +220,11 @@
 		name,
 		xMismatch,
 		columnSummary,
+		seriesOrder,
 		undefined,
 		undefined,
-		y2
+		y2,
+		seriesLabelFmt
 	);
 
 	$: config.update((d) => {

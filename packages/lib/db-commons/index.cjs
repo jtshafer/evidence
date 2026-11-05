@@ -102,7 +102,7 @@ const processQueryResults = function (queryResults) {
 /**
  * @typedef {Object} AsyncIterableToBatchedAsyncGeneratorOptions
  * @property {(rows: Record<string, unknown>[]) => QueryResult["columnTypes"]} [mapResultsToEvidenceColumnTypes]
- * @property {(row: unknown) => Record<string, unknown>} [standardizeRow]
+ * @property {(row: unknown, columnTypes?: ColumnDefinition[]) => Record<string, unknown>} [standardizeRow]
  * @property {() => void | Promise<void>} [closeConnection]
  */
 
@@ -136,18 +136,25 @@ const asyncIterableToBatchedAsyncGenerator = async function (
 
 		let null_columns = column_names.filter((column) => firstRow[column] == null);
 		while (null_columns.length > 0) {
-			const next = await iterator.next().then((x) => x.value);
-			preread_rows.push(standardizeRow(next));
-			null_columns = null_columns.filter((column) => next[column] == null);
+			const next = await iterator.next();
+
+			// When the iterator is done, next will be { done: true, value: undefined }
+			// We want to break out of the loop when we reach the end of the iterator
+			if (next.done) {
+				break;
+			}
+
+			preread_rows.push(standardizeRow(next.value));
+			null_columns = null_columns.filter((column) => next.value && next.value[column] == null);
 		}
 		columnTypes = mapResultsToEvidenceColumnTypes(preread_rows);
 	}
 
 	const rows = async function* () {
 		let batch = [];
-		batch.push(...preread_rows);
+		batch.push(...preread_rows.map((row) => standardizeRow(row, columnTypes)));
 		for await (const row of iterable) {
-			batch.push(standardizeRow(row));
+			batch.push(standardizeRow(row, columnTypes));
 			if (batch.length >= batchSize) {
 				yield batch;
 				batch = [];

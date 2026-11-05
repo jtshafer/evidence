@@ -1,5 +1,19 @@
 # @evidence-dev/trino
 
+## 1.0.9
+
+### Patch Changes
+
+- Updated dependencies [cb5687cd9]
+  - @evidence-dev/db-commons@1.0.6
+
+## 1.0.8
+
+### Patch Changes
+
+- 70130373a: allow for passwordless auth and https
+- a5f972352: Fix and update to trino client.
+
 ## 1.0.7
 
 ### Patch Changes
