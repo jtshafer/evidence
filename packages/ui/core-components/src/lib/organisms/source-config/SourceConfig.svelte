@@ -1,11 +1,15 @@
 <script>
+	// @ts-check
+
+	/** @typedef {import('@evidence-dev/sdk/plugins').DatasourceSpec} DatasourceSpec */
+	/** @typedef {{ package: { package: import('@evidence-dev/sdk/plugins').DatasourcePackage } }} DatasourcePlugin */
+
 	import NewSourceForm from './NewSourceForm.svelte';
 	import SourceConfigRow from './SourceConfigRow.svelte';
-
-	import { Button } from '../../atoms/button';
+	import { Button } from '../../atoms/button/index.js';
 	import { FolderPlus } from '@evidence-dev/component-utilities/icons';
 
-	// TODO: figure out types here
+	/** @type {Record<string, DatasourcePlugin>} */
 	export let availableSourcePlugins = {};
 
 	// Pivot to package name instead of db type
@@ -13,28 +17,31 @@
 		const p = v.package.package;
 		if (!a[p.name]) a[p.name] = v;
 		return a;
-	}, {});
+	}, /** @type {Record<string, DatasourcePlugin>} */ ({}));
 
+	/** @type {Pick<DatasourceSpec, 'name' | 'type' | 'options' | 'environmentVariables'>[]} */
 	export let sources = [];
 
 	let showNewSource = sources.length === 0;
 
+	/** @type {string} */
 	let lastAdded;
 
+	/** @param {import('svelte').ComponentEvents<NewSourceForm>['newSource']} e */
 	function addNewSource(e) {
 		const { newSourceType, newSourceName } = e.detail;
 		if (!newSourceType) return;
-		const target = availableSourcePlugins[newSourceType];
 		sources.push({
 			name: newSourceName,
 			type: newSourceType,
-			package: target.package.package.name,
-			options: {}
+			options: {},
+			environmentVariables: {}
 		});
 		lastAdded = newSourceName;
 		showNewSource = false;
 	}
 
+	/** @type {string[]} */
 	let duplicatePackageNames = [];
 	$: if (sources.length) {
 		const allNames = sources.reduce(
@@ -54,7 +61,7 @@
 </script>
 
 <section class="w-full mt-8">
-	<div class="p-3 rounded-t w-full border-gray-200 border-t border-l border-r">
+	<div class="p-3 rounded-t w-full border-base-300 border-t border-l border-r">
 		<h2 class="font-semibold text-lg mb-2">Data Sources</h2>
 
 		<div
@@ -70,7 +77,7 @@
 
 				{#if duplicatePackageNames.length}
 					<div class="col-span-4">
-						<p class="text-red-500 text-bold text-sm">
+						<p class="text-negative text-bold text-sm">
 							Duplicate Packages found; this could lead to unexpected behavior
 						</p>
 						<ul>
@@ -94,7 +101,7 @@
 					<Button
 						icon={FolderPlus}
 						size="md"
-						variant="success"
+						variant="positive"
 						on:click={() => (showNewSource = !showNewSource)}
 					>
 						Add new source
@@ -118,11 +125,11 @@
 
 		<div />
 	</div>
-	<div class="p-4 rounded-b w-full bg-gray-100 text-sm border-[1px] border-gray-200">
+	<div class="p-4 rounded-b w-full bg-base-200 text-sm border-[1px] border-base-300">
 		<!-- TODO: Update this when we have docs -->
 		Learn more about
 		<a
-			class="text-blue-600 no-underline"
+			class="text-primary hover:brightness-110 active:brightness-90 transition"
 			href="https://docs.evidence.dev/core-concepts/data-sources/"
 		>
 			Configuring Data Sources &rarr;

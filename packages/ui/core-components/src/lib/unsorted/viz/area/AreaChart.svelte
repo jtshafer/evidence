@@ -3,8 +3,12 @@
 </script>
 
 <script>
+	import { getThemeStores } from '../../../themes/themes.js';
+
 	import Chart from '../core/Chart.svelte';
 	import Area from './Area.svelte';
+
+	const { resolveColor, resolveColorsObject, resolveColorPalette } = getThemeStores();
 
 	export let data = undefined;
 	export let x = undefined;
@@ -35,8 +39,13 @@
 	export let yScale = undefined;
 
 	export let line = undefined;
+
 	export let fillColor = undefined;
+	$: fillColorStore = resolveColor(fillColor);
+
 	export let lineColor = undefined;
+	$: lineColorStore = resolveColor(lineColor);
+
 	export let fillOpacity = undefined;
 	export let chartAreaHeight = undefined;
 
@@ -56,12 +65,16 @@
 
 	let chartType = 'Area Chart';
 
-	export let colorPalette = undefined;
+	export let colorPalette = 'default';
+	$: colorPaletteStore = resolveColorPalette(colorPalette);
 
 	export let labels = undefined;
 	export let labelSize = undefined;
 	export let labelPosition = undefined;
+
 	export let labelColor = undefined;
+	$: labelColorStore = resolveColor(labelColor);
+
 	export let labelFmt = undefined;
 	export let showAllLabels = undefined;
 
@@ -73,9 +86,16 @@
 	export let emptyMessage = undefined;
 
 	export let renderer = undefined;
+	export let downloadableData = undefined;
+	export let downloadableImage = undefined;
+
 	export let seriesColors = undefined;
+	$: seriesColorsStore = resolveColorsObject(seriesColors);
+
+	export let seriesOrder = undefined;
 
 	export let connectGroup = undefined;
+	export let seriesLabelFmt = undefined;
 </script>
 
 <Chart
@@ -109,20 +129,22 @@
 	stackType={type}
 	{stacked100}
 	{chartAreaHeight}
-	{colorPalette}
+	colorPalette={colorPaletteStore}
 	{echartsOptions}
 	{seriesOptions}
 	{printEchartsConfig}
 	{emptySet}
 	{emptyMessage}
 	{renderer}
+	{downloadableData}
+	{downloadableImage}
 	{connectGroup}
-	{seriesColors}
+	seriesColors={seriesColorsStore}
 >
 	<Area
 		{line}
-		{fillColor}
-		{lineColor}
+		fillColor={fillColorStore}
+		lineColor={lineColorStore}
 		{fillOpacity}
 		{handleMissing}
 		{type}
@@ -134,9 +156,11 @@
 		{labels}
 		{labelSize}
 		{labelPosition}
-		{labelColor}
+		labelColor={labelColorStore}
 		{labelFmt}
 		{showAllLabels}
+		{seriesOrder}
+		{seriesLabelFmt}
 	/>
 	<slot />
 </Chart>

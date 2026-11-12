@@ -6,18 +6,18 @@
 	import { mapContextKey } from '../constants.js';
 	import { getContext } from 'svelte';
 	import checkInputs from '@evidence-dev/component-utilities/checkInputs';
-	import chroma from 'chroma-js';
 	import MapArea from './MapArea.svelte';
-	import { uiColours } from '@evidence-dev/component-utilities/colours';
-	import ErrorChart from '../../core/ErrorChart.svelte';
-	import { INPUTS_CONTEXT_KEY } from '@evidence-dev/component-utilities/globalContexts';
+	import { nanoid } from 'nanoid';
+	import { getInputContext } from '@evidence-dev/sdk/utils/svelte';
+	import { getThemeStores } from '../../../../themes/themes.js';
+	const inputs = getInputContext();
+
+	const { theme, resolveColor, resolveColorPalette } = getThemeStores();
 
 	/** @type {import("../EvidenceMap.js").EvidenceMap | undefined} */
 	const map = getContext(mapContextKey);
 
 	if (!map) throw new Error('Evidence Map Context has not been set. Areas will not function');
-
-	const inputs = getContext(INPUTS_CONTEXT_KEY);
 
 	/** @type {import("@evidence-dev/sdk/usql").QueryValue} */
 	export let data;
@@ -40,6 +40,12 @@
 
 	/** @type {string | undefined} */
 	export let name = undefined;
+	/** @type {'categorical' | 'scalar' | undefined} */
+	export let legendType = undefined;
+	export let chartType = 'Area Map';
+
+	/** @type {boolean} */
+	export let legend = true;
 
 	/**
 	 * Callback function for the area click event.
@@ -65,10 +71,15 @@
 
 	/** @type {string|undefined} */
 	export let color = undefined;
+	$: colorStore = resolveColor(color);
+
 	/** @type {string} */
-	export let borderColor = uiColours.grey300;
+	export let borderColor = 'base-300';
+	$: borderColorStore = resolveColor(borderColor);
+
 	/** @type {string[]} */
-	export let colorPalette = [uiColours.blue200, uiColours.blue999];
+	export let colorPalette = undefined;
+	$: colorPaletteStore = resolveColorPalette(colorPalette);
 
 	/** @type {number|undefined} */
 	export let opacity = undefined;
@@ -106,10 +117,13 @@
 		selectedBorderWidth = 0.75;
 	}
 
-	/** @type {string|undefined} */
-	export let selectedColor = '#d42a2a';
 	/** @type {string} */
-	export let selectedBorderColor = '#ab1818';
+	export let selectedColor = 'accent';
+	$: selectedColorStore = resolveColor(selectedColor);
+
+	/** @type {string} */
+	export let selectedBorderColor = 'accent-content';
+	$: selectedBorderColorStore = resolveColor(selectedBorderColor);
 
 	/** @type {number|undefined} */
 	export let selectedOpacity = undefined;
@@ -174,56 +188,56 @@
 		interactive: true
 	};
 
-	let geoJsonData;
-	// let error = undefined;
-
-	/**
-	 * Load the GeoJSON data from the URL.
-	 * @returns {Promise<void>}
-	 */
-	async function loadGeoJson() {
-		try {
-			const response = await fetch(geoJsonUrl);
-			geoJsonData = await response.json();
-		} catch (e) {
-			console.error('Failed to load GeoJSON:', e);
-			// error = e.toString();
-		}
-	}
-
 	/**
 	 * Process the areas and filter the GeoJSON data.
-	 * @returns {object[]} The filtered GeoJSON features.
+	 * @returns {Promise<object[]>} The filtered GeoJSON features.
 	 */
-	function processAreas() {
+	async function processAreas() {
+		const urlToLoad = geoJsonUrl;
+		const geoJsonData = await map.loadGeoJson(urlToLoad);
 		if (!geoJsonData) return;
+		if (geoJsonUrl !== urlToLoad) return;
 		const areaSet = new Set(data.map((d) => d[areaCol].toString())); // Ensure string format
-		const filteredGeoJson = geoJsonData.features.filter((geo) =>
-			areaSet.has(geo.properties[geoId])
-		); // Filter GeoJSON data
-
-		return filteredGeoJson;
+		geoJson = geoJsonData?.features.filter((geo) => areaSet.has(geo.properties[geoId])); // Filter GeoJSON data
 	}
 
-	let values, colorScale, filteredGeoJson;
+	let values;
+	let colorScale;
+	let geoJson = [];
+	let legendId = nanoid();
+	let colorPaletteFinal;
 
 	/**
 	 * Initialize the component.
+	 * @param {import('@evidence-dev/tailwind').Theme} theme
 	 * @returns {Promise<void>}
 	 */
-	async function init() {
-		await loadGeoJson();
+	async function init(theme) {
+		let initDataOptions = {
+			corordinates: [areaCol],
+			value,
+			checkInputs,
+			min,
+			max,
+			colorPalette: $colorPaletteStore,
+			legendType,
+			valueFmt,
+			chartType,
+			legendId,
+			legend,
+			theme
+		};
 		await data.fetch();
+		if (!$colorStore) {
+			({
+				values,
+				colorPalette: colorPaletteFinal,
+				legendType,
+				colorScale
+			} = await map.initializeData(data, initDataOptions));
+		}
 
-		checkInputs(data, [areaCol]);
-
-		values = $data.map((d) => d[value]);
-
-		colorScale = chroma
-			.scale(colorPalette)
-			.domain([min ?? Math.min(...values), max ?? Math.max(...values)]);
-
-		filteredGeoJson = processAreas();
+		await processAreas();
 
 		if (name && $data.length > 0) {
 			setInputDefault($data[0], name);
@@ -273,53 +287,67 @@
 		});
 		setInputDefault(item, name);
 	}
+
+	// Re-load areas when related props change
+	$: geoJsonUrl,
+		data,
+		areaCol,
+		(async () => {
+			await data.fetch();
+			await processAreas();
+		})();
 </script>
 
 <!-- Additional data.fetch() included in await to trigger reactivity. Should ideally be handled in init() in the future. -->
-{#await Promise.all([map.initPromise, init(), data.fetch()]) then}
-	{#each filteredGeoJson as feature}
-		{@const item = $data.find((d) => d[areaCol].toString() === feature.properties[geoId])}
-		<MapArea
-			{map}
-			{feature}
-			{item}
-			{name}
-			areaOptions={{
-				fillColor: color ?? colorScale(item[value]).hex(),
-				fillOpacity: opacity,
-				opacity: opacity,
-				weight: borderWidth,
-				color: borderColor,
-				className: `outline-none ${areaClass}`
-			}}
-			selectedAreaOptions={{
-				fillColor: selectedColor,
-				fillOpacity: selectedOpacity,
-				opacity: selectedOpacity,
-				weight: selectedBorderWidth,
-				color: selectedBorderColor,
-				className: `outline-none ${selectedAreaClass}`
-			}}
-			onclick={() => {
-				onclick(item);
-			}}
-			setInput={() => {
-				if (name) {
-					updateInput(item, name);
-				}
-			}}
-			unsetInput={() => {
-				if (name) {
-					unsetInput(item, name);
-				}
-			}}
-			{tooltip}
-			{tooltipOptions}
-			{tooltipType}
-			{showTooltip}
-			{link}
-		/>
-	{/each}
-{:catch e}
-	<ErrorChart error={e} chartType="Area Map" />
+{#await Promise.all([map.initPromise, data.fetch()]) then}
+	{#await init($theme) then}
+		{#each geoJson as feature (feature.properties[geoId])}
+			{@const item = $data.find((d) => d[areaCol].toString() === feature.properties[geoId])}
+			<MapArea
+				{map}
+				{feature}
+				{item}
+				{name}
+				areaOptions={{
+					fillColor:
+						$colorStore ??
+						map.handleFillColor(item, value, values, colorPaletteFinal, colorScale, $theme) ??
+						colorScale(item[value]).hex(),
+					fillOpacity: opacity,
+					opacity: opacity,
+					weight: borderWidth,
+					color: $borderColorStore,
+					className: `outline-none ${areaClass}`
+				}}
+				selectedAreaOptions={{
+					fillColor: $selectedColorStore,
+					fillOpacity: selectedOpacity,
+					opacity: selectedOpacity,
+					weight: selectedBorderWidth,
+					color: $selectedBorderColorStore,
+					className: `outline-none ${selectedAreaClass}`
+				}}
+				onclick={() => {
+					onclick(item);
+				}}
+				setInput={() => {
+					if (name) {
+						updateInput(item, name);
+					}
+				}}
+				unsetInput={() => {
+					if (name) {
+						unsetInput(item, name);
+					}
+				}}
+				{tooltip}
+				{tooltipOptions}
+				{tooltipType}
+				{showTooltip}
+				{link}
+			/>
+		{/each}
+	{:catch e}
+		{map.handleInternalError(e)}
+	{/await}
 {/await}
