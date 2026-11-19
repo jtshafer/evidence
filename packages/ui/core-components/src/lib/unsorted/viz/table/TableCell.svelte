@@ -20,9 +20,10 @@
 </script>
 
 <td
+	role="cell"
 	class="{$$restProps.class ||
 		''} {dataType} {topBorder} whitespace-nowrap overflow-hidden first:pl-[3px]
-	{compact ? 'text-xs py-[1px] px-[4px]' : 'py-[2px] px-[8px]'}
+	{compact ? 'text-xs py-[1px] pr-[16.5px]' : 'py-[2px] pl-[6px] pr-[13px]'}
 	"
 	style:text-align={align}
 	style:height
@@ -58,7 +59,7 @@
 	}
 
 	.index {
-		color: var(--grey-300);
+		@apply text-base-content-muted;
 		text-align: left;
 		max-width: -moz-min-content;
 		max-width: min-content;

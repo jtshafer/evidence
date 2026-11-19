@@ -6,19 +6,21 @@
 	import { mapContextKey } from '../constants.js';
 	import { getContext } from 'svelte';
 	import checkInputs from '@evidence-dev/component-utilities/checkInputs';
-	import chroma from 'chroma-js';
 	import Point from './Point.svelte';
-	import ErrorChart from '../../core/ErrorChart.svelte';
 	import { getColumnExtentsLegacy } from '@evidence-dev/component-utilities/getColumnExtents';
-	import { INPUTS_CONTEXT_KEY } from '@evidence-dev/component-utilities/globalContexts';
-	import { uiColours } from '@evidence-dev/component-utilities/colours';
 
 	/** @type {import("../EvidenceMap.js").EvidenceMap | undefined} */
 	const map = getContext(mapContextKey);
 
 	if (!map) throw new Error('Evidence Map Context has not been set. Points will not function');
 
-	const inputs = getContext(INPUTS_CONTEXT_KEY);
+	import { getInputContext } from '@evidence-dev/sdk/utils/svelte';
+	import { getThemeStores } from '../../../../themes/themes.js';
+	import { nanoid } from 'nanoid';
+
+	const { theme, resolveColor, resolveColorPalette } = getThemeStores();
+
+	const inputs = getInputContext();
 
 	/** @type {import("@evidence-dev/sdk/usql").QueryValue} */
 	export let data;
@@ -35,6 +37,14 @@
 	export let sizeFmt = undefined;
 	/** @type {number|undefined} */
 	export let size = undefined; // point size
+	/** @type {'categorical' | 'scalar' | undefined} */
+	export let legendType = undefined;
+	/** @type {'Point Map' | 'Bubble Map'} */
+	export let chartType = 'Point Map';
+
+	/** @type {boolean} */
+	export let legend = true;
+
 	if (size) {
 		// if size was user-supplied
 		size = Number(size);
@@ -85,10 +95,15 @@
 
 	/** @type {string} */
 	export let borderColor = 'white';
+	$: borderColorStore = resolveColor(borderColor);
+
 	/** @type {string|undefined} */
 	export let color = undefined;
-	/** @type {string[]} */
-	export let colorPalette = ['lightblue', 'darkblue'];
+	$: colorStore = resolveColor(color);
+
+	/** @type {string[] | undefined} */
+	export let colorPalette = undefined;
+	$: colorPaletteStore = resolveColorPalette(colorPalette);
 
 	/** @type {number|undefined} */
 	export let opacity = undefined;
@@ -126,9 +141,12 @@
 	}
 
 	/** @type {string} */
-	export let selectedBorderColor = '#ab1818';
-	/** @type {string|undefined} */
-	export let selectedColor = '#d42a2a';
+	export let selectedColor = 'accent';
+	$: selectedColorStore = resolveColor(selectedColor);
+
+	/** @type {string} */
+	export let selectedBorderColor = 'accent-content';
+	$: selectedBorderColorStore = resolveColor(selectedBorderColor);
 
 	/** @type {number|undefined} */
 	export let selectedOpacity = undefined;
@@ -208,21 +226,40 @@
 		return Math.sqrt((newPoint / maxData) * maxSizeSq);
 	}
 
-	let values, minValue, maxValue, colorScale, sizeExtents, maxData, maxSizeSq;
+	let values, colorScale, sizeExtents, maxData, maxSizeSq, colorPaletteFinal;
+
+	/** @type {'bubble' | 'points' }*/
+	export let pointStyle = 'points';
+
+	/** @type {string}*/
+	let legendId = map.registerPane(nanoid());
 
 	/**
 	 * Initialize the component.
+	 * @param {import('@evidence-dev/tailwind').Theme} theme
 	 * @returns {Promise<void>}
 	 */
-	async function init() {
+	async function init(theme) {
 		if (data) {
-			await data.fetch();
-			checkInputs(data, [lat, long]);
-			values = $data.map((d) => d[value]);
-			minValue = Math.min(...values);
-			maxValue = Math.max(...values);
-
-			colorScale = chroma.scale(colorPalette).domain([min ?? minValue, max ?? maxValue]);
+			let initDataOptions = {
+				corordinates: [lat, long],
+				value,
+				checkInputs,
+				min,
+				max,
+				colorPalette: $colorPaletteStore,
+				legendType,
+				valueFmt,
+				chartType,
+				legendId,
+				legend,
+				theme
+			};
+			({
+				values,
+				colorPalette: colorPaletteFinal,
+				colorScale
+			} = await map.initializeData(data, initDataOptions));
 
 			if (sizeCol) {
 				sizeExtents = getColumnExtentsLegacy(data, sizeCol);
@@ -282,25 +319,31 @@
 </script>
 
 <!-- Additional data.fetch() included in await to trigger reactivity. Should ideally be handled in init() in the future. -->
-{#await Promise.all([map.initPromise, data.fetch(), init()]) then}
+{#await Promise.all([map.initPromise, data.fetch(), init($theme)]) then}
 	{#each $data as item}
 		<Point
 			{map}
 			options={{
-				fillColor: color ?? (value ? colorScale(item[value]).hex() : uiColours.blue700), // Fill color of the circle
+				// kw note:
+				//need to clean this logic
+				fillColor:
+					$colorStore ??
+					map.handleFillColor(item, value, values, colorPaletteFinal, colorScale, $theme),
 				radius: sizeCol ? bubbleSize(item[sizeCol]) : size, // Radius of the circle in meters
 				fillOpacity: opacity,
 				opacity: opacity,
 				weight: borderWidth,
-				color: borderColor,
-				className: `outline-none ${pointClass}`
+				color: $borderColorStore,
+				className: `outline-none ${pointClass}`,
+				markerType: pointStyle,
+				pane: legendId
 			}}
 			selectedOptions={{
-				fillColor: selectedColor,
+				fillColor: $selectedColorStore,
 				fillOpacity: selectedOpacity,
 				opacity: selectedOpacity,
 				weight: selectedBorderWidth,
-				color: selectedBorderColor,
+				color: $selectedBorderColorStore,
 				className: `outline-none ${selectedPointClass}`
 			}}
 			coords={[item[lat], item[long]]}
@@ -326,5 +369,5 @@
 		/>
 	{/each}
 {:catch e}
-	<ErrorChart error={e} chartType="Point Map" />
+	{map.handleInternalError(e)}
 {/await}
