@@ -10,6 +10,9 @@
 
 	// import { prepareBoxplotData } from 'echarts/extension/dataTool';
 	import { formatValue } from '@evidence-dev/component-utilities/formatting';
+	import { getThemeStores } from '../../../themes/themes.js';
+
+	const { theme, resolveColor } = getThemeStores();
 
 	export let y = undefined;
 	const ySet = y ? true : false; // Hack, see chart.svelte
@@ -17,8 +20,13 @@
 	const seriesSet = series ? true : false; // Hack, see chart.svelte
 	export let options = undefined;
 
+	/** @type {import('@evidence-dev/component-utilities/generateBoxPlotData').BoxPlotData}*/
 	export let boxPlotData;
+	$: ({ colors } = boxPlotData);
+
 	export let color = undefined;
+	$: colorStore = resolveColor(color);
+
 	export let min = undefined;
 	export let max = undefined;
 
@@ -41,17 +49,18 @@
 	$: boxConfig = {
 		type: 'boxplot',
 		data: boxPlotData.data,
-		colorBy: color ? 'data' : 'series',
+		colorBy: $colorStore ? 'data' : 'series',
 		itemStyle: {
-			// color: boxPlotData.colors,
-			opacity: 1
-			// borderColor: 'inherit'
+			opacity: 1,
+			color: $theme.colors['base-200'],
+			borderColor: $colorStore ? undefined : $theme.colors['primary']
 		},
 		boxWidth: [7, 25],
 		hoverAnimation: false,
 		emphasis: {
 			disabled: true
-		}
+		},
+		__id: id
 	};
 
 	// $: outlierConfig = {
@@ -60,7 +69,10 @@
 	// 	data: outlierData
 	// }
 
+	const id = Math.random().toString();
+
 	$: config.update((d) => {
+		d.series = d.series.filter((s) => s.__id !== id);
 		d.series.push(boxConfig);
 		// d.series.push(outlierConfig);
 		return d;
@@ -110,7 +122,7 @@
 				return output;
 			}
 		},
-		color: boxPlotData.colors
+		color: $colors
 	};
 
 	beforeUpdate(() => {
@@ -134,7 +146,7 @@
 					d.xAxis = { ...d.xAxis, ...chartOverrides.xAxis };
 				}
 				d.tooltip = { ...d.tooltip, ...chartOverrides.tooltip };
-				if (color) {
+				if ($colorStore) {
 					d.color = chartOverrides.color;
 				}
 				return d;

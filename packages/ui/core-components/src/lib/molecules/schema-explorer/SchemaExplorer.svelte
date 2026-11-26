@@ -1,7 +1,8 @@
 <script>
 	import { browser } from '$app/environment';
 	import { Icon } from '@steeze-ui/svelte-icon';
-	import { Abc, Calendar, _123, CircleHalf2, Table, Database } from '@steeze-ui/tabler-icons';
+	import { Table, Database } from '@steeze-ui/tabler-icons';
+	import TableView from '../../atoms/table-view/TableView.svelte';
 	export let data;
 	let { __db: db } = data;
 
@@ -42,16 +43,17 @@
 		<div>
 			<ul class="list-none m-0 p-0 flex flex-col gap-1 mb-1">
 				{#each Object.entries(metadata) as [source, meta] (source)}
-					<li class="font-mono m-0 text-sm text-white">
+					<li class="font-mono m-0 text-sm">
 						<button
-							class="bg-gray-500 px-2 py-1 rounded font-bold flex w-full hover:bg-blue-500"
-							class:bg-blue-500={selectedSource === source}
+							class="bg-base-200 px-2 py-1 rounded font-bold flex w-full hover:bg-base-300 hover:text-base-content"
+							class:bg-info={selectedSource === source}
+							class:text-info-content={selectedSource === source}
 							on:click={() => {
 								selectedSource = selectedSource === source ? '' : source;
 								selectedTable = ''; // Reset selectedTable when source is clicked
 							}}
 						>
-							<Icon src={Database} class="text-white w-5 h-5 mr-1" />
+							<Icon src={Database} class="w-5 h-5 mr-1" />
 							{source}
 						</button>
 					</li>
@@ -60,37 +62,19 @@
 							{#each Object.entries(meta) as [name, tableMeta] (name)}
 								<li class="font-mono m-0 text-sm font-bold ml-3">
 									<button
-										class="bg-gray-200 px-2 py-1 rounded flex w-full hover:bg-blue-200"
-										class:bg-blue-200={selectedTable === tableMeta}
+										class="bg-base-200 px-2 py-1 rounded flex w-full hover:bg-base-300 hover:text-base-content"
+										class:bg-info={selectedTable === tableMeta}
+										class:text-info-content={selectedTable === tableMeta}
 										on:click={() => {
 											selectedTable = selectedTable === tableMeta ? '' : tableMeta;
 										}}
 									>
-										<Icon src={Table} class="text-gray-700 w-5 h-5 mr-1" />
+										<Icon src={Table} class="w-5 h-5 mr-1" />
 										{name}
 									</button>
 								</li>
 								{#if selectedTable === tableMeta}
-									<ul class="list-none m-0 flex flex-col gap-1">
-										{#each tableMeta.columns as column (column.column_name)}
-											<li class="font-mono text-sm ml-6 rounded flex flex-row">
-												<div class="flex px-2 py-1 rounded w-full hover:bg-blue-50">
-													{#if column.data_type === 'INT' || column.data_type === 'BIGINT' || column.data_type === 'SMALLINT' || column.data_type === 'TINYINT' || column.data_type === 'DOUBLE'}
-														<Icon src={_123} class="text-gray-700 w-5 h-5" />
-													{:else if column.data_type === 'DATE' || column.data_type === 'DATETIME' || column.data_type === 'TIMESTAMP'}
-														<Icon src={Calendar} class="text-gray-700 w-5 h-5" />
-													{:else if column.data_type === 'BOOLEAN'}
-														<Icon src={CircleHalf2} class="text-gray-700 w-5 h-5" />
-													{:else}
-														<Icon src={Abc} class="text-gray-700 w-5 h-5" />
-													{/if}
-													<div class="pl-2 lowercase">
-														<b>{column.column_name}</b>&nbsp; {column.data_type}
-													</div>
-												</div>
-											</li>
-										{/each}
-									</ul>
+									<TableView columns={tableMeta.columns} rowClass="ml-6 " />
 								{/if}
 							{/each}
 						</ul>
@@ -102,5 +86,5 @@
 {:catch e}
 	An error was encountered while loading project schema.
 
-	<pre class="px-4 py-2 bg-red-800 text-white">{e.message}</pre>
+	<pre class="px-4 py-2 bg-negative">{e.message}</pre>
 {/await}

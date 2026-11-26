@@ -8,7 +8,7 @@
 	// @ts-check
 	import ReferencePoint from './ReferencePoint.svelte';
 
-	/** @type {'pass' | 'warn' | 'error'} */
+	/** @type {'pass' | 'warn' | 'error' | undefined} */
 	export let emptySet = undefined;
 
 	/** @type {string | undefined} */
@@ -24,15 +24,15 @@
 	export let data = undefined;
 
 	/**
-	 * @type {import('../colors.js').Color}
-	 * @default "grey"
+	 * @type {string}
+	 * @default "base-content-muted"
 	 */
-	export let color = 'grey';
+	export let color = 'base-content-muted';
 
 	/** @type {string | undefined} */
 	export let label = undefined;
 
-	/** @type {import('../colors.js').Color | undefined} */
+	/** @type {string | undefined} */
 	export let labelColor = undefined;
 
 	/**
@@ -45,19 +45,16 @@
 	 * @type {number | string | undefined}
 	 * @default 5
 	 */
-	export let labelPadding = 5;
+	export let labelPadding = 8;
 
 	/**
-	 * @type {import('./reference-point.d.ts').LabelPosition}
+	 * @type {import('./types.js').LabelPosition}
 	 * @default "top"
 	 */
 	export let labelPosition = 'top';
 
-	/**
-	 * @type {string}
-	 * @default "white"
-	 */
-	export let labelBackgroundColor = 'white';
+	/** @type {string} */
+	export let labelBackgroundColor = 'base-100';
 
 	/**
 	 * @type {number | string | undefined}
@@ -71,11 +68,8 @@
 	 */
 	export let labelBorderRadius = 4;
 
-	/**
-	 * @type {string | undefined}
-	 * @default "gray"
-	 */
-	export let labelBorderColor = 'rgb(154, 165, 177)';
+	/** @type {string | undefined} */
+	export let labelBorderColor = 'base-300';
 
 	/** @type {'solid' | 'dotted' | 'dashed' | undefined} */
 	export let labelBorderType = undefined;
@@ -93,12 +87,12 @@
 	export let italic = undefined;
 
 	/**
-	 * @type {import('./reference-point.d.ts').Symbol}
+	 * @type {import('../types.js').Symbol}
 	 * @default "circle"
 	 */
 	export let symbol = 'circle';
 
-	/** @type {import('../colors.js').Color | undefined} */
+	/** @type {string | undefined} */
 	export let symbolColor = undefined;
 
 	/**

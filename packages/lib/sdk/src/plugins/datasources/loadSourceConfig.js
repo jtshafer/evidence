@@ -36,7 +36,7 @@ export const loadConnectionOptions = async (sourceDir) => {
 export const loadConnectionEnvironment = async (sourceName) => {
 	/** @type {any} */
 	const out = {};
-	const keyRegex = /^EVIDENCE_SOURCE__([a-zA-Z0-1_]+)$/;
+	const keyRegex = /^EVIDENCE_SOURCE__([a-zA-Z0-9_]+)$/;
 	for (const [key, value] of Object.entries(process.env)) {
 		const parts = keyRegex.exec(key);
 		if (!parts) continue;
@@ -61,7 +61,7 @@ export const loadConnectionEnvironment = async (sourceName) => {
 /**
  * @param {string} sourceDir
  * @deprecated Use loadSourceConfig
- * @returns {Promise<import('./schemas/datasource.schema.js').DatasourceSpecFile | false>}
+ * @returns {Promise<import('./schemas/datasource.schema.js').DatasourceSpec | false>}
  */
 export const loadConnection = async (sourceDir) => {
 	const connParamsRaw = await fs
@@ -104,7 +104,7 @@ export const loadConnection = async (sourceDir) => {
 
 /**
  * @param {string} sourceDir
- * @returns {Promise<import('./schemas/datasource.schema.js').DatasourceSpecFile | false>}
+ * @returns {Promise<import('./schemas/datasource.schema.js').DatasourceSpec | false>}
  */
 export const loadSourceConfig = async (sourceDir) => {
 	const connectionConfig = await loadConnection(sourceDir);
@@ -119,4 +119,29 @@ export const loadSourceConfig = async (sourceDir) => {
 		...connectionConfig,
 		options
 	};
+};
+
+/**
+ * @param {import('./schemas/datasource.schema.js').DatasourceSpec} datasource
+ */
+export const getDatasourceConfigAsEnvironmentVariables = (datasource) => {
+	/** @type {Record<string,string>} */
+	const environmentVariables = {};
+	/**
+	 * @param {any} obj
+	 * @param {string} [currentKey]
+	 */
+	const generateNestedEnvVars = (obj, currentKey = '') => {
+		for (const [key, value] of Object.entries(obj)) {
+			const newKey = currentKey ? `${currentKey}__${key}` : key;
+			if (typeof value === 'object') {
+				generateNestedEnvVars(value, newKey);
+			} else {
+				environmentVariables[`EVIDENCE_SOURCE__${datasource.name}__${newKey}`] = value.toString();
+			}
+		}
+	};
+	generateNestedEnvVars(datasource.options);
+
+	return environmentVariables;
 };

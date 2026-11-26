@@ -5,7 +5,11 @@
 <script>
 	import Chart from '../core/Chart.svelte';
 	import Box from './Box.svelte';
-	import generateBoxPlotData from '@evidence-dev/component-utilities/generateBoxPlotData';
+	import { Query } from '@evidence-dev/sdk/usql';
+	import { generateBoxPlotData } from '@evidence-dev/component-utilities/generateBoxPlotData';
+	import { getThemeStores } from '../../../themes/themes.js';
+
+	const { theme, resolveColor } = getThemeStores();
 
 	export let data = undefined;
 	export let name = undefined;
@@ -15,7 +19,9 @@
 	export let midpoint = undefined;
 	export let max = undefined;
 	export let confidenceInterval = undefined;
+
 	export let color = undefined;
+	$: colorStore = resolveColor(color);
 
 	export let series = undefined;
 	export let xType = undefined;
@@ -46,6 +52,8 @@
 	export let seriesOptions = undefined;
 	export let printEchartsConfig = false;
 	export let renderer = undefined;
+	export let downloadableData = undefined;
+	export let downloadableImage = undefined;
 
 	export let connectGroup = undefined;
 
@@ -62,17 +70,34 @@
 		}
 	}
 
-	$: boxPlotData = generateBoxPlotData(
-		data,
-		min,
-		intervalBottom,
-		midpoint,
-		intervalTop,
-		max,
-		name,
-		color,
-		confidenceInterval
-	);
+	/** @type {{ colors: Readable<string[]> }}*/
+	let boxPlotData;
+	const updateBoxPlotData = () => {
+		boxPlotData = generateBoxPlotData(
+			data,
+			min,
+			intervalBottom,
+			midpoint,
+			intervalTop,
+			max,
+			name,
+			$colorStore,
+			confidenceInterval,
+			resolveColor
+		);
+	};
+
+	updateBoxPlotData();
+	$: {
+		$theme;
+		$colorStore;
+		if (data) {
+			(async () => {
+				if (Query.isQuery(data)) await data.fetch();
+				updateBoxPlotData();
+			})();
+		}
+	}
 </script>
 
 <Chart
@@ -107,9 +132,11 @@
 	{emptySet}
 	{emptyMessage}
 	{renderer}
+	{downloadableData}
+	{downloadableImage}
 	{connectGroup}
 	{seriesColors}
 >
-	<Box {boxPlotData} {color} {min} {max} />
+	<Box {boxPlotData} color={colorStore} {max} />
 	<slot />
 </Chart>
